@@ -23,19 +23,17 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Устанавливаем официальную утилиту Yandex Cloud CLI прямо на воркер GitHub
       - name: Install Yandex Cloud CLI
         run: |
           curl -sSL https://yandexcloud.net | bash -s -- -i /opt/yc -b /opt/yc/bin -n
           echo "/opt/yc/bin" >> $GITHUB_PATH
 
-      # Авторизуем yc через твой оригинальный JSON-ключ и делаем нативный docker login
-      # Секрет YC_SA_KEY_JSON должен содержать оригинальный JSON, который мы скопировали в самом начале
+      # Используем абсолютный путь /opt/yc/bin/yc, чтобы избежать проблем с переменной PATH
       - name: Login to Yandex Container Registry
         run: |
           echo '${{ secrets.YC_SA_KEY_JSON }}' > sa_key.json
-          yc config set service-account-key sa_key.json
-          yc iam create-token | docker login --username iam --password-stdin cr.yandex
+          /opt/yc/bin/yc config set service-account-key sa_key.json
+          /opt/yc/bin/yc iam create-token | docker login --username iam --password-stdin cr.yandex
           rm sa_key.json
 
       - name: Build and Push to YCR
