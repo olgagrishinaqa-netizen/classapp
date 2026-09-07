@@ -1,0 +1,69 @@
+name: Deploy to Production VM
+
+on:
+  workflow_run:
+    workflows: ["Build and Push to YCR"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Copy docker-compose.prod.yml via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "docker-compose.prod.yml"
+          target: "/opt/classapp"
+
+      - name: SSH Remote Deploy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            set -e
+
+            sudo mkdir -p /opt/classapp
+            sudo chown -R $USER:$USER /opt/classapp
+            cd /opt/classapp
+
+            [ -f docker-compose.prod.yml ] || mv docker-compose.prod.yml/docker-compose.prod.yml . || true
+
+            # Генерируем .env с учетом локальной базы данных
+            cat > .env <<YML
+            REGISTRY_ID=${{ secrets.YCR_REGISTRY_ID }}
+            IMAGE_TAG=${{ github.sha }}
+            SECRET_KEY=${{ secrets.APP_SECRET_KEY }}
+            DB_PASSWORD=${{ secrets.APP_DB_PASSWORD }}
+            YML
+
+            echo '${{ secrets.YC_SA_KEY_JSON }}' | docker login --username json_key --password-stdin cr.yandex
+
+            # Чтобы depends_on с проверкой здоровья работал, добавим healthcheck прямо в compose-манифест
+            python3 -c "
+            import yaml
+            data = yaml.safe_load(open('docker-compose.prod.yml'))
+            data['services']['db']['healthcheck'] = {
+                'test': ['CMD-SHELL', 'pg_isready -U postgres -d classapp'],
+                'interval': '5s',
+                'timeout': '5s',
+                'retries': 5
+            }
+            yaml.safe_dump(data, open('docker-compose.prod.yml', 'w'))
+            " 2>/dev/null || true
+
+            docker compose --env-file .env -f docker-compose.prod.yml pull
+            docker compose --env-file .env -f docker-compose.prod.yml up -d
+
+            # Даем базе 5 секунд окончательно инициализироваться и применяем миграции Alembic
+            sleep 5
+            docker compose --env-file .env -f docker-compose.prod.yml exec -T web alembic upgrade head
