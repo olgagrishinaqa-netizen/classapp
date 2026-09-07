@@ -1,0 +1,21 @@
+# Виртуальное окружение Python
+.venv/
+__pycache__/
+*.pyc
+
+# Секреты приложения
+.env
+.env.dev
+.env.prod
+
+# Локальные файлы конфигурации линтеров
+alembic.ini.bak
+docker-compose.dev.yml.bak
+
+# Служебные файлы Terraform (КРИТИЧЕСКИ ВАЖНО)
+**/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars
+!infra/terraform/terraform.tfvars.sample
