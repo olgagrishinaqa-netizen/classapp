@@ -79,12 +79,12 @@ jobs:
             export REPO_OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
             sed -i "s/\${REPO_OWNER}/$REPO_OWNER_LOWER/g" docker-compose.prod.yml
 
-            # 5. Разворачиваем стек командами, которые у нас успешно проходили
-            docker compose --env-file .env -f docker-compose.prod.yml pull
-            docker compose --env-file .env -f docker-compose.prod.yml up -d
+            # 5. Разворачиваем стек БЕЗ флага --env-file (Docker подхватит его сам)
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d
 
             # 6. Даем базе данных время и применяем миграции Alembic
             sleep 5
-            docker compose --env-file .env -f docker-compose.prod.yml exec -T web alembic upgrade head
+            docker compose -f docker-compose.prod.yml exec -T web alembic upgrade head
 
             echo "🚀 Деплой успешно завершен! Приложение работает на http://${{ secrets.SSH_HOST }}"
