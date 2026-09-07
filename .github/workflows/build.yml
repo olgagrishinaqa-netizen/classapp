@@ -23,11 +23,10 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Универсальный, нативный способ логина: БЕЗ yc, БЕЗ капризных плагинов Яндекса.
-      # В username передаем ID ключа YCA..., в password - secret YCNoF...
+      # Финальный, каноничный Docker-логин в YCR по статическому Access Key Яндекса
       - name: Login to Yandex Container Registry
         run: |
-          echo "${{ secrets.YC_SA_KEY_JSON }}" | docker login --username YCAJE6_vRZ-rrOh71kLjSNwFN --password-stdin cr.yandex
+          echo "${{ secrets.YC_SA_KEY_JSON }}" | docker login --username json_key --password-stdin cr.yandex
 
       - name: Build and Push to YCR
         uses: docker/build-push-action@v6
