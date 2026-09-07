@@ -2,7 +2,7 @@ name: Deploy to Production VM
 
 on:
   workflow_run:
-    workflows: ["Build and Push to YCR"]
+    workflows: ["Build and Push to GHCR"] # Должно точно совпадать с именем в build.yml
     types: [completed]
     branches: [main]
 
@@ -38,32 +38,22 @@ jobs:
 
             [ -f docker-compose.prod.yml ] || mv docker-compose.prod.yml/docker-compose.prod.yml . || true
 
-            # Генерируем .env с учетом локальной базы данных
+            # Генерируем .env подтягивая метаданные из гитхаба
             cat > .env <<YML
-            REGISTRY_ID=${{ secrets.YCR_REGISTRY_ID }}
+            REPO_OWNER=${{ github.repository_owner }}
             IMAGE_TAG=${{ github.sha }}
             SECRET_KEY=${{ secrets.APP_SECRET_KEY }}
             DB_PASSWORD=${{ secrets.APP_DB_PASSWORD }}
             YML
 
-            echo '${{ secrets.YC_SA_KEY_JSON }}' | docker login --username json_key --password-stdin cr.yandex
+            # Подменяем путь к образу в docker-compose на лету
+            sed -i "s|cr.yandex/\${REGISTRY_ID}/classapp|ghcr.io/${{ github.repository_owner }}/classapp|g" docker-compose.prod.yml
 
-            # Чтобы depends_on с проверкой здоровья работал, добавим healthcheck прямо в compose-манифест
-            python3 -c "
-            import yaml
-            data = yaml.safe_load(open('docker-compose.prod.yml'))
-            data['services']['db']['healthcheck'] = {
-                'test': ['CMD-SHELL', 'pg_isready -U postgres -d classapp'],
-                'interval': '5s',
-                'timeout': '5s',
-                'retries': 5
-            }
-            yaml.safe_dump(data, open('docker-compose.prod.yml', 'w'))
-            " 2>/dev/null || true
+            # Опционально: если ваш репозиторий GitHub приватный, раскомментируйте строку ниже для авторизации на ВМ:
+            # echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
             docker compose --env-file .env -f docker-compose.prod.yml pull
             docker compose --env-file .env -f docker-compose.prod.yml up -d
 
-            # Даем базе 5 секунд окончательно инициализироваться и применяем миграции Alembic
             sleep 5
             docker compose --env-file .env -f docker-compose.prod.yml exec -T web alembic upgrade head
