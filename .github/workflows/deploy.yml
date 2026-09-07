@@ -14,7 +14,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Оставляем только один, современный и работающий шаг деплоя через SSH
+      # Запускаем деплой через современный и безопасный SSH-экшен
       - name: SSH Remote Deploy
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -29,7 +29,7 @@ jobs:
             sudo chown -R $USER:$USER /opt/classapp
             cd /opt/classapp
 
-            # 2. Пишем docker-compose.prod.yml напрямую на сервере (DevOps-стандарт)
+            # 2. Пишем docker-compose.prod.yml напрямую на сервере Яндекса
             cat > docker-compose.prod.yml <<'YML'
             services:
               db:
@@ -54,7 +54,6 @@ jobs:
                 restart: unless-stopped
                 ports:
                   - "80:8000"
-                # Ограничиваем количество воркеров Gunicorn до 2 для экономии RAM
                 command: gunicorn -w 2 -b 0.0.0.0:8000 wsgi:app
                 environment:
                   FLASK_CONFIG: config.ProdConfig
@@ -80,7 +79,7 @@ jobs:
             export REPO_OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
             sed -i "s/\${REPO_OWNER}/$REPO_OWNER_LOWER/g" docker-compose.prod.yml
 
-            # 5. Разворачиваем стек
+            # 5. Скачиваем свежие сборки и разворачиваем стек контейнеров
             export $(cat .env | xargs)
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d
@@ -91,7 +90,7 @@ jobs:
               sleep 2
             done
 
-            # 7. Применяем миграции Alembic в уже готовом окружении
+            # 7. Безопасно применяем миграции Alembic (теперь памяти хватит с запасом)
             echo "🚀 Запуск миграций базы данных..."
             docker compose -f docker-compose.prod.yml exec -T web alembic upgrade head
 
