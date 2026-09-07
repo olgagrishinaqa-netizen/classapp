@@ -23,19 +23,11 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Официальный нативный способ авторизации от Yandex Cloud в GitHub Actions
-      - name: Yandex Cloud Authorize
-        uses: yandex-cloud/yc-github-actions/authorize@v2
-        with:
-          key-json: ${{ secrets.YC_SA_KEY_JSON }}
-
-      # Используем официальный login-action от Docker, который автоматически подхватит токен из шага выше
+      # Универсальный, нативный способ логина: БЕЗ yc, БЕЗ капризных плагинов Яндекса.
+      # В username передаем ID ключа YCA..., в password - secret YCNoF...
       - name: Login to Yandex Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: cr.yandex
-          username: iam
-          password: ${{ env.YC_IAM_TOKEN }} # Переменная автоматически инжектируется плагином Яндекса
+        run: |
+          echo "${{ secrets.YC_SA_KEY_JSON }}" | docker login --username YCAJE6_vRZ-rrOh71kLjSNwFN --password-stdin cr.yandex
 
       - name: Build and Push to YCR
         uses: docker/build-push-action@v6
