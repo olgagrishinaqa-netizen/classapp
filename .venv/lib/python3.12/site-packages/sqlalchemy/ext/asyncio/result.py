@@ -99,9 +99,7 @@ class AsyncResult(_WithKeys, AsyncCommon[Row[_TP]]):
         # BaseCursorResult pre-generates the "_row_getter".  Use that
         # if available rather than building a second one
         if "_row_getter" in real_result.__dict__:
-            self._set_memoized_attribute(
-                "_row_getter", real_result.__dict__["_row_getter"]
-            )
+            self._set_memoized_attribute("_row_getter", real_result.__dict__["_row_getter"])
 
     @property
     def t(self) -> AsyncTupleResult[_TP]:
@@ -162,9 +160,7 @@ class AsyncResult(_WithKeys, AsyncCommon[Row[_TP]]):
         """
         return self._column_slices(col_expressions)
 
-    async def partitions(
-        self, size: Optional[int] = None
-    ) -> AsyncIterator[Sequence[Row[_TP]]]:
+    async def partitions(self, size: Optional[int] = None) -> AsyncIterator[Sequence[Row[_TP]]]:
         """Iterate through sub-lists of rows of the size given.
 
         An async iterator is returned::
@@ -220,9 +216,7 @@ class AsyncResult(_WithKeys, AsyncCommon[Row[_TP]]):
         else:
             return row
 
-    async def fetchmany(
-        self, size: Optional[int] = None
-    ) -> Sequence[Row[_TP]]:
+    async def fetchmany(self, size: Optional[int] = None) -> Sequence[Row[_TP]]:
         """Fetch many rows.
 
         When all rows are exhausted, returns an empty list.
@@ -445,9 +439,7 @@ class AsyncResult(_WithKeys, AsyncCommon[Row[_TP]]):
         return await greenlet_spawn(FrozenResult, self)
 
     @overload
-    def scalars(
-        self: AsyncResult[Tuple[_T]], index: Literal[0]
-    ) -> AsyncScalarResult[_T]: ...
+    def scalars(self: AsyncResult[Tuple[_T]], index: Literal[0]) -> AsyncScalarResult[_T]: ...
 
     @overload
     def scalars(self: AsyncResult[Tuple[_T]]) -> AsyncScalarResult[_T]: ...
@@ -530,9 +522,7 @@ class AsyncScalarResult(AsyncCommon[_R]):
         self._unique_filter_state = (set(), strategy)
         return self
 
-    async def partitions(
-        self, size: Optional[int] = None
-    ) -> AsyncIterator[Sequence[_R]]:
+    async def partitions(self, size: Optional[int] = None) -> AsyncIterator[Sequence[_R]]:
         """Iterate through sub-lists of elements of the size given.
 
         Equivalent to :meth:`_asyncio.AsyncResult.partitions` except that
@@ -660,9 +650,7 @@ class AsyncMappingResult(_WithKeys, AsyncCommon[RowMapping]):
         r"""Establish the columns that should be returned in each row."""
         return self._column_slices(col_expressions)
 
-    async def partitions(
-        self, size: Optional[int] = None
-    ) -> AsyncIterator[Sequence[RowMapping]]:
+    async def partitions(self, size: Optional[int] = None) -> AsyncIterator[Sequence[RowMapping]]:
         """Iterate through sub-lists of elements of the size given.
 
         Equivalent to :meth:`_asyncio.AsyncResult.partitions` except that
@@ -700,9 +688,7 @@ class AsyncMappingResult(_WithKeys, AsyncCommon[RowMapping]):
         else:
             return row
 
-    async def fetchmany(
-        self, size: Optional[int] = None
-    ) -> Sequence[RowMapping]:
+    async def fetchmany(self, size: Optional[int] = None) -> Sequence[RowMapping]:
         """Fetch many rows.
 
         Equivalent to :meth:`_asyncio.AsyncResult.fetchmany` except that
@@ -779,9 +765,7 @@ class AsyncTupleResult(AsyncCommon[_R], util.TypingOnly):
 
     if TYPE_CHECKING:
 
-        async def partitions(
-            self, size: Optional[int] = None
-        ) -> AsyncIterator[Sequence[_R]]:
+        async def partitions(self, size: Optional[int] = None) -> AsyncIterator[Sequence[_R]]:
             """Iterate through sub-lists of elements of the size given.
 
             Equivalent to :meth:`_result.Result.partitions` except that

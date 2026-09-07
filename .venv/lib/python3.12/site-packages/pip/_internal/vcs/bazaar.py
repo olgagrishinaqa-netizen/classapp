@@ -49,9 +49,7 @@ class Bazaar(VersionControl):
             flag = ""
         else:
             flag = f"-{'v'*verbosity}"
-        cmd_args = make_command(
-            "checkout", "--lightweight", flag, rev_options.to_args(), url, dest
-        )
+        cmd_args = make_command("checkout", "--lightweight", flag, rev_options.to_args(), url, dest)
         self.run_command(cmd_args)
 
     def switch(self, dest: str, url: HiddenText, rev_options: RevOptions) -> None:
@@ -80,9 +78,7 @@ class Bazaar(VersionControl):
 
     @classmethod
     def get_remote_url(cls, location: str) -> str:
-        urls = cls.run_command(
-            ["info"], show_stdout=False, stdout_only=True, cwd=location
-        )
+        urls = cls.run_command(["info"], show_stdout=False, stdout_only=True, cwd=location)
         for line in urls.splitlines():
             line = line.strip()
             for x in ("checkout of branch: ", "parent branch: "):

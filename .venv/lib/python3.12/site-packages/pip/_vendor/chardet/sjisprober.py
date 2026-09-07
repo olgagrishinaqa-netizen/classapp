@@ -77,9 +77,7 @@ class SJISProber(MultiByteCharSetProber):
                 char_len = self.coding_sm.get_current_charlen()
                 if i == 0:
                     self._last_char[1] = byte
-                    self.context_analyzer.feed(
-                        self._last_char[2 - char_len :], char_len
-                    )
+                    self.context_analyzer.feed(self._last_char[2 - char_len :], char_len)
                     self.distribution_analyzer.feed(self._last_char, char_len)
                 else:
                     self.context_analyzer.feed(

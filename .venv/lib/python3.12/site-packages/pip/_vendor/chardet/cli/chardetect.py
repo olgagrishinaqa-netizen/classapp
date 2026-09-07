@@ -12,7 +12,6 @@ If no paths are provided, it takes its input from stdin.
 
 """
 
-
 import argparse
 import sys
 from typing import Iterable, List, Optional
@@ -65,9 +64,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     """
     # Get command line arguments
     parser = argparse.ArgumentParser(
-        description=(
-            "Takes one or more file paths and reports their detected encodings"
-        )
+        description=("Takes one or more file paths and reports their detected encodings")
     )
     parser.add_argument(
         "input",
@@ -87,9 +84,7 @@ def main(argv: Optional[List[str]] = None) -> None:
         help="Rename legacy encodings to more modern ones.",
         action="store_true",
     )
-    parser.add_argument(
-        "--version", action="version", version=f"%(prog)s {__version__}"
-    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = parser.parse_args(argv)
 
     for f in args.input:
@@ -101,11 +96,7 @@ def main(argv: Optional[List[str]] = None) -> None:
                 "--help\n",
                 file=sys.stderr,
             )
-        print(
-            description_of(
-                f, f.name, minimal=args.minimal, should_rename_legacy=args.legacy
-            )
-        )
+        print(description_of(f, f.name, minimal=args.minimal, should_rename_legacy=args.legacy))
 
 
 if __name__ == "__main__":

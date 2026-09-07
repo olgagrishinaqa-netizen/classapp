@@ -43,9 +43,7 @@ class PromptBase(Generic[PromptType]):
     response_type: type = str
 
     validate_error_message = "[prompt.invalid]Please enter a valid value"
-    illegal_choice_message = (
-        "[prompt.invalid.choice]Please select one of the available options"
-    )
+    illegal_choice_message = "[prompt.invalid.choice]Please select one of the available options"
     prompt_suffix = ": "
 
     choices: Optional[List[str]] = None
@@ -62,9 +60,7 @@ class PromptBase(Generic[PromptType]):
     ) -> None:
         self.console = console or get_console()
         self.prompt = (
-            Text.from_markup(prompt, style="prompt")
-            if isinstance(prompt, str)
-            else prompt
+            Text.from_markup(prompt, style="prompt") if isinstance(prompt, str) else prompt
         )
         self.password = password
         if choices is not None:
@@ -85,8 +81,7 @@ class PromptBase(Generic[PromptType]):
         show_choices: bool = True,
         default: DefaultType,
         stream: Optional[TextIO] = None,
-    ) -> Union[DefaultType, PromptType]:
-        ...
+    ) -> Union[DefaultType, PromptType]: ...
 
     @classmethod
     @overload
@@ -100,8 +95,7 @@ class PromptBase(Generic[PromptType]):
         show_default: bool = True,
         show_choices: bool = True,
         stream: Optional[TextIO] = None,
-    ) -> PromptType:
-        ...
+    ) -> PromptType: ...
 
     @classmethod
     def ask(
@@ -169,11 +163,7 @@ class PromptBase(Generic[PromptType]):
             prompt.append(" ")
             prompt.append(choices, "prompt.choices")
 
-        if (
-            default != ...
-            and self.show_default
-            and isinstance(default, (str, self.response_type))
-        ):
+        if default != ... and self.show_default and isinstance(default, (str, self.response_type)):
             prompt.append(" ")
             _default = self.render_default(default)
             prompt.append(_default)
@@ -250,14 +240,12 @@ class PromptBase(Generic[PromptType]):
         """Hook to display something before the prompt."""
 
     @overload
-    def __call__(self, *, stream: Optional[TextIO] = None) -> PromptType:
-        ...
+    def __call__(self, *, stream: Optional[TextIO] = None) -> PromptType: ...
 
     @overload
     def __call__(
         self, *, default: DefaultType, stream: Optional[TextIO] = None
-    ) -> Union[PromptType, DefaultType]:
-        ...
+    ) -> Union[PromptType, DefaultType]: ...
 
     def __call__(self, *, default: Any = ..., stream: Optional[TextIO] = None) -> Any:
         """Run the prompt loop.

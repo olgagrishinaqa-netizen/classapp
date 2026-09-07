@@ -23,9 +23,7 @@ def build_wheel_editable(
     try:
         logger.debug("Destination directory: %s", tempd)
 
-        runner = runner_with_spinner_message(
-            f"Building editable for {name} (pyproject.toml)"
-        )
+        runner = runner_with_spinner_message(f"Building editable for {name} (pyproject.toml)")
         with backend.subprocess_runner(runner):
             try:
                 wheel_name = backend.build_editable(

@@ -75,8 +75,7 @@ def load_pyproject_toml(
     if has_pyproject and not has_setup:
         if use_pep517 is not None and not use_pep517:
             raise InstallationError(
-                "Disabling PEP 517 processing is invalid: "
-                "project does not have a setup.py"
+                "Disabling PEP 517 processing is invalid: " "project does not have a setup.py"
             )
         use_pep517 = True
     elif build_system and "build-backend" in build_system:

@@ -1,4 +1,5 @@
 """Fallback pure Python implementation of msgpack"""
+
 from datetime import datetime as _DateTime
 import sys
 import struct
@@ -359,9 +360,7 @@ class Unpacker(object):
         if object_pairs_hook is not None and not callable(object_pairs_hook):
             raise TypeError("`object_pairs_hook` is not callable")
         if object_hook is not None and object_pairs_hook is not None:
-            raise TypeError(
-                "object_pairs_hook and object_hook are mutually " "exclusive"
-            )
+            raise TypeError("object_pairs_hook and object_hook are mutually " "exclusive")
         if not callable(ext_hook):
             raise TypeError("`ext_hook` is not callable")
 
@@ -459,9 +458,7 @@ class Unpacker(object):
             n = b & 0b00001111
             typ = TYPE_ARRAY
             if n > self._max_array_len:
-                raise ValueError(
-                    "%s exceeds max_array_len(%s)" % (n, self._max_array_len)
-                )
+                raise ValueError("%s exceeds max_array_len(%s)" % (n, self._max_array_len))
         elif b & 0b11110000 == 0b10000000:
             n = b & 0b00001111
             typ = TYPE_MAP
@@ -503,9 +500,7 @@ class Unpacker(object):
         elif 0xD4 <= b <= 0xD8:
             size, fmt, typ = _MSGPACK_HEADERS[b]
             if self._max_ext_len < size:
-                raise ValueError(
-                    "%s exceeds max_ext_len(%s)" % (size, self._max_ext_len)
-                )
+                raise ValueError("%s exceeds max_ext_len(%s)" % (size, self._max_ext_len))
             self._reserve(size + 1)
             n, obj = _unpack_from(fmt, self._buffer, self._buff_i)
             self._buff_i += size + 1
@@ -526,9 +521,7 @@ class Unpacker(object):
             (n,) = _unpack_from(fmt, self._buffer, self._buff_i)
             self._buff_i += size
             if n > self._max_array_len:
-                raise ValueError(
-                    "%s exceeds max_array_len(%s)" % (n, self._max_array_len)
-                )
+                raise ValueError("%s exceeds max_array_len(%s)" % (n, self._max_array_len))
         elif 0xDE <= b <= 0xDF:
             size, fmt, typ = _MSGPACK_HEADERS[b]
             self._reserve(size)
@@ -574,17 +567,14 @@ class Unpacker(object):
                 return
             if self._object_pairs_hook is not None:
                 ret = self._object_pairs_hook(
-                    (self._unpack(EX_CONSTRUCT), self._unpack(EX_CONSTRUCT))
-                    for _ in xrange(n)
+                    (self._unpack(EX_CONSTRUCT), self._unpack(EX_CONSTRUCT)) for _ in xrange(n)
                 )
             else:
                 ret = {}
                 for _ in xrange(n):
                     key = self._unpack(EX_CONSTRUCT)
                     if self._strict_map_key and type(key) not in (unicode, bytes):
-                        raise ValueError(
-                            "%s is not allowed for map key" % str(type(key))
-                        )
+                        raise ValueError("%s is not allowed for map key" % str(type(key)))
                     if not PY2 and type(key) is str:
                         key = sys.intern(key)
                     ret[key] = self._unpack(EX_CONSTRUCT)
@@ -859,9 +849,7 @@ class Packer(object):
                     self._pack(obj[i], nest_limit - 1)
                 return
             if check(obj, dict):
-                return self._pack_map_pairs(
-                    len(obj), dict_iteritems(obj), nest_limit - 1
-                )
+                return self._pack_map_pairs(len(obj), dict_iteritems(obj), nest_limit - 1)
 
             if self._datetime and check(obj, _DateTime) and obj.tzinfo is not None:
                 obj = Timestamp.from_datetime(obj)
@@ -963,7 +951,7 @@ class Packer(object):
 
     def _pack_map_pairs(self, n, pairs, nest_limit=DEFAULT_RECURSE_LIMIT):
         self._pack_map_header(n)
-        for (k, v) in pairs:
+        for k, v in pairs:
             self._pack(k, nest_limit - 1)
             self._pack(v, nest_limit - 1)
 

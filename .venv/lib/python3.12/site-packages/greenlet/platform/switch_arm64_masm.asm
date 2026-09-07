@@ -3,7 +3,7 @@
   EXTERN slp_save_state_asm
   EXTERN slp_restore_state_asm
 
-slp_switch    
+slp_switch
     ; push callee saved registers to stack
     stp    x19, x20, [sp, #-16]!
     stp    x21, x22, [sp, #-16]!

@@ -1,6 +1,9 @@
 import os
+
 from flask import Flask
+
 from .extensions import db  # и др. ваши расширения: login_manager, csrf и т.д.
+
 
 def create_app(config_object=None):
     if not config_object:
