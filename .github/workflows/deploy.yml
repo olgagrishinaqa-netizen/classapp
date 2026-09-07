@@ -14,7 +14,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Наш первоначальный, успешно работавший шаг деплоя через SSH
+      # Наш успешно работающий шаг деплоя через SSH
       - name: SSH Remote Deploy
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -29,8 +29,8 @@ jobs:
             sudo chown -R $USER:$USER /opt/classapp
             cd /opt/classapp
 
-            # 2. Пишем docker-compose.prod.yml напрямую на сервере Яндекса
-            cat > docker-compose.prod.yml <<'YML'
+            # 2. Пишем стандартный файл docker-compose.yml напрямую на сервере (убираем -f)
+            cat > docker-compose.yml <<'YML'
             services:
               db:
                 image: postgres:15
@@ -77,14 +77,14 @@ jobs:
 
             # 4. Принудительно приводим имя владельца репозитория к нижнему регистру для Docker
             export REPO_OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-            sed -i "s/\${REPO_OWNER}/$REPO_OWNER_LOWER/g" docker-compose.prod.yml
+            sed -i "s/\${REPO_OWNER}/$REPO_OWNER_LOWER/g" docker-compose.yml
 
-            # 5. Разворачиваем стек БЕЗ флага --env-file (Docker подхватит его сам)
-            docker compose -f docker-compose.prod.yml pull
-            docker compose -f docker-compose.prod.yml up -d
+            # 5. Разворачиваем стек: чистые, нативные команды без флагов -f
+            docker compose pull
+            docker compose up -d
 
             # 6. Даем базе данных время и применяем миграции Alembic
             sleep 5
-            docker compose -f docker-compose.prod.yml exec -T web alembic upgrade head
+            docker compose exec -T web alembic upgrade head
 
             echo "🚀 Деплой успешно завершен! Приложение работает на http://${{ secrets.SSH_HOST }}"
