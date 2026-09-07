@@ -16,6 +16,7 @@ services:
     volumes:
       - .:/app
     environment:
+      FLASK_APP: "app:create_app()"
       FLASK_CONFIG: config.DevConfig
       SECRET_KEY: dev-secret
       DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/classapp
