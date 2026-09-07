@@ -59,6 +59,7 @@ jobs:
                   FLASK_CONFIG: config.ProdConfig
                   SECRET_KEY: ${SECRET_KEY}
                   DATABASE_URL: postgresql+psycopg2://postgres:${DB_PASSWORD}@db:5432/classapp
+                  PYTHONPATH: /app
                 depends_on:
                   db:
                     condition: service_healthy
@@ -83,8 +84,8 @@ jobs:
             docker compose pull
             docker compose up -d
 
-            # 6. Даем базе данных время и применяем миграции Alembic
+            # 6. Даем базе данных время и применяем миграции Alembic с пробросом пути PYTHONPATH
             sleep 5
-            docker compose exec -T web alembic upgrade head
+            docker compose exec -T -e PYTHONPATH=/app web alembic upgrade head
 
             echo "🚀 Деплой успешно завершен! Приложение работает на http://${{ secrets.SSH_HOST }}"
