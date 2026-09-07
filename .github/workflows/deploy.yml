@@ -19,7 +19,7 @@ jobs:
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
+          username: ubuntu
           key: ${{ secrets.SSH_KEY }}
           script: |
             set -e
@@ -87,4 +87,3 @@ jobs:
             docker compose --env-file .env -f docker-compose.prod.yml exec -T web alembic upgrade head
 
             echo "🚀 Деплой успешно завершен! Приложение работает на http://${{ secrets.SSH_HOST }}"
-
