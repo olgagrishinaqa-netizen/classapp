@@ -87,3 +87,4 @@ jobs:
             docker compose --env-file .env -f docker-compose.prod.yml exec -T web alembic upgrade head
 
             echo "🚀 Деплой успешно завершен! Приложение работает на http://${{ secrets.SSH_HOST }}"
+
