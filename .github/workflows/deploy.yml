@@ -14,7 +14,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Запускаем деплой через современный и безопасный SSH-экшен
+      # Наш первоначальный, успешно работавший шаг деплоя через SSH
       - name: SSH Remote Deploy
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -24,7 +24,7 @@ jobs:
           script: |
             set -e
 
-            # 1. Создаем чистую рабочую директорию проекта
+            # 1. Создаем рабочую директорию проекта
             sudo mkdir -p /opt/classapp
             sudo chown -R $USER:$USER /opt/classapp
             cd /opt/classapp
@@ -79,18 +79,12 @@ jobs:
             export REPO_OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
             sed -i "s/\${REPO_OWNER}/$REPO_OWNER_LOWER/g" docker-compose.prod.yml
 
-            # 5. Разворачиваем стек: Docker Compose сам безопасно подхватит .env файл из текущей папки
-            docker compose -f docker-compose.prod.yml pull
-            docker compose -f docker-compose.prod.yml up -d
+            # 5. Разворачиваем стек командами, которые у нас успешно проходили
+            docker compose --env-file .env -f docker-compose.prod.yml pull
+            docker compose --env-file .env -f docker-compose.prod.yml up -d
 
-            # 6. Умное ожидание: проверяем готовность контейнера БД перед миграциями
-            echo "⏱️ Ожидаем готовности базы данных..."
-            until docker compose -f docker-compose.prod.yml exec -T db pg_isready -U postgres -d classapp; do
-              sleep 2
-            done
-
-            # 7. Безопасно применяем миграции Alembic (теперь памяти и синтаксиса хватает с запасом)
-            echo "🚀 Запуск миграций базы данных..."
-            docker compose -f docker-compose.prod.yml exec -T web alembic upgrade head
+            # 6. Даем базе данных время и применяем миграции Alembic
+            sleep 5
+            docker compose --env-file .env -f docker-compose.prod.yml exec -T web alembic upgrade head
 
             echo "🚀 Деплой успешно завершен! Приложение работает на http://${{ secrets.SSH_HOST }}"
