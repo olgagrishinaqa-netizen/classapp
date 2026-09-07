@@ -2,7 +2,7 @@ name: Deploy to Production VM
 
 on:
   workflow_run:
-    workflows: ["Build and Push to GHCR"] # Должно точно совпадать с именем в build.yml
+    workflows: ["Build and Push to GHCR"]
     types: [completed]
     branches: [main]
 
@@ -14,15 +14,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Copy docker-compose.prod.yml via SCP
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          source: "docker-compose.prod.yml"
-          target: "/opt/classapp"
-
+      # Оставляем только один, современный и работающий шаг деплоя через SSH
       - name: SSH Remote Deploy
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -32,28 +24,66 @@ jobs:
           script: |
             set -e
 
+            # 1. Создаем чистую рабочую директорию проекта
             sudo mkdir -p /opt/classapp
             sudo chown -R $USER:$USER /opt/classapp
             cd /opt/classapp
 
-            [ -f docker-compose.prod.yml ] || mv docker-compose.prod.yml/docker-compose.prod.yml . || true
+            # 2. Пишем docker-compose.prod.yml напрямую на сервере (DevOps-стандарт)
+            cat > docker-compose.prod.yml <<'YML'
+            services:
+              db:
+                image: postgres:15
+                restart: unless-stopped
+                environment:
+                  POSTGRES_DB: classapp
+                  POSTGRES_USER: postgres
+                  POSTGRES_PASSWORD: ${DB_PASSWORD}
+                volumes:
+                  - classapp_prod_db_data:/var/lib/postgresql/data
+                expose:
+                  - "5432"
+                healthcheck:
+                  test: ["CMD-SHELL", "pg_isready -U postgres -d classapp"]
+                  interval: 5s
+                  timeout: 5s
+                  retries: 5
 
-            # Генерируем .env подтягивая метаданные из гитхаба
-            cat > .env <<YML
+              web:
+                image: ghcr.io/${REPO_OWNER}/classapp:${IMAGE_TAG}
+                restart: unless-stopped
+                ports:
+                  - "80:8000"
+                environment:
+                  FLASK_CONFIG: config.ProdConfig
+                  SECRET_KEY: ${SECRET_KEY}
+                  DATABASE_URL: postgresql+psycopg2://postgres:${DB_PASSWORD}@db:5432/classapp
+                depends_on:
+                  db:
+                    condition: service_healthy
+
+            volumes:
+              classapp_prod_db_data:
+            YML
+
+            # 3. Генерируем файл переменных окружения .env
+            cat > .env <<ENV
             REPO_OWNER=${{ github.repository_owner }}
             IMAGE_TAG=${{ github.sha }}
             SECRET_KEY=${{ secrets.APP_SECRET_KEY }}
             DB_PASSWORD=${{ secrets.APP_DB_PASSWORD }}
-            YML
+            ENV
 
-            # Подменяем путь к образу в docker-compose на лету
-            sed -i "s|cr.yandex/\${REGISTRY_ID}/classapp|ghcr.io/${{ github.repository_owner }}/classapp|g" docker-compose.prod.yml
+            # 4. Принудительно приводим имя владельца репозитория к нижнему регистру для Docker
+            export REPO_OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+            sed -i "s/\${REPO_OWNER}/$REPO_OWNER_LOWER/g" docker-compose.prod.yml
 
-            # Опционально: если ваш репозиторий GitHub приватный, раскомментируйте строку ниже для авторизации на ВМ:
-            # echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
+            # 5. Разворачиваем стек
             docker compose --env-file .env -f docker-compose.prod.yml pull
             docker compose --env-file .env -f docker-compose.prod.yml up -d
 
+            # 6. Даем базе данных время и применяем миграции Alembic
             sleep 5
             docker compose --env-file .env -f docker-compose.prod.yml exec -T web alembic upgrade head
+
+            echo "🚀 Деплой успешно завершен! Приложение работает на http://${{ secrets.SSH_HOST }}"
