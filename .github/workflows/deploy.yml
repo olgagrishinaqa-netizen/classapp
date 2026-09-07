@@ -54,6 +54,8 @@ jobs:
                 restart: unless-stopped
                 ports:
                   - "80:8000"
+                # Ограничиваем количество воркеров Gunicorn до 2 для экономии RAM
+                command: gunicorn -w 2 -b 0.0.0.0:8000 wsgi:app
                 environment:
                   FLASK_CONFIG: config.ProdConfig
                   SECRET_KEY: ${SECRET_KEY}
