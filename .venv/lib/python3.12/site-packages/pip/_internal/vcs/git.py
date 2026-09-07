@@ -198,9 +198,7 @@ class Git(VersionControl):
         return True
 
     @classmethod
-    def resolve_revision(
-        cls, dest: str, url: HiddenText, rev_options: RevOptions
-    ) -> RevOptions:
+    def resolve_revision(cls, dest: str, url: HiddenText, rev_options: RevOptions) -> RevOptions:
         """
         Resolve a revision to a new RevOptions object with the SHA1 of the
         branch, tag, or ref if found.
@@ -465,9 +463,9 @@ class Git(VersionControl):
         scheme, netloc, path, query, fragment = urlsplit(url)
         if scheme.endswith("file"):
             initial_slashes = path[: -len(path.lstrip("/"))]
-            newpath = initial_slashes + urllib.request.url2pathname(path).replace(
-                "\\", "/"
-            ).lstrip("/")
+            newpath = initial_slashes + urllib.request.url2pathname(path).replace("\\", "/").lstrip(
+                "/"
+            )
             after_plus = scheme.find("+") + 1
             url = scheme[:after_plus] + urlunsplit(
                 (scheme[after_plus:], netloc, newpath, query, fragment),
@@ -508,8 +506,7 @@ class Git(VersionControl):
             )
         except BadCommand:
             logger.debug(
-                "could not determine if %s is under git control "
-                "because git is not available",
+                "could not determine if %s is under git control " "because git is not available",
                 location,
             )
             return None

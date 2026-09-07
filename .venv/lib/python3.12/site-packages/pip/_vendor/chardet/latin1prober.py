@@ -136,9 +136,7 @@ class Latin1Prober(CharSetProber):
 
         total = sum(self._freq_counter)
         confidence = (
-            0.0
-            if total < 0.01
-            else (self._freq_counter[3] - self._freq_counter[1] * 20.0) / total
+            0.0 if total < 0.01 else (self._freq_counter[3] - self._freq_counter[1] * 20.0) / total
         )
         confidence = max(confidence, 0.0)
         # lower the confidence of latin1 so that other more accurate

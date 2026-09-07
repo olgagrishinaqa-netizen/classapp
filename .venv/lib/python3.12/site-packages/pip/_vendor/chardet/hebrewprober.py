@@ -282,9 +282,7 @@ class HebrewProber(CharSetProber):
             return self.VISUAL_HEBREW_NAME
 
         # It's not dominant enough, try to rely on the model scores instead.
-        modelsub = (
-            self._logical_prober.get_confidence() - self._visual_prober.get_confidence()
-        )
+        modelsub = self._logical_prober.get_confidence() - self._visual_prober.get_confidence()
         if modelsub > self.MIN_MODEL_DISTANCE:
             return self.LOGICAL_HEBREW_NAME
         if modelsub < -self.MIN_MODEL_DISTANCE:

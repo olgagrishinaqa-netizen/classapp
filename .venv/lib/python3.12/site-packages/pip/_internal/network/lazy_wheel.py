@@ -46,9 +46,7 @@ class LazyZipOverHTTP:
     during initialization.
     """
 
-    def __init__(
-        self, url: str, session: PipSession, chunk_size: int = CONTENT_CHUNK_SIZE
-    ) -> None:
+    def __init__(self, url: str, session: PipSession, chunk_size: int = CONTENT_CHUNK_SIZE) -> None:
         head = session.head(url, headers=HEADERS)
         raise_for_status(head)
         assert head.status_code == 200

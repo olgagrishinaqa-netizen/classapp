@@ -42,9 +42,7 @@ class ShowCommand(Command):
         query = args
 
         results = search_packages_info(query)
-        if not print_results(
-            results, list_files=options.files, verbose=options.verbose
-        ):
+        if not print_results(results, list_files=options.files, verbose=options.verbose):
             return ERROR
         return SUCCESS
 
@@ -80,9 +78,7 @@ def search_packages_info(query: List[str]) -> Generator[_PackageInfo, None, None
 
     installed = {dist.canonical_name: dist for dist in env.iter_all_distributions()}
     query_names = [canonicalize_name(name) for name in query]
-    missing = sorted(
-        [name for name, pkg in zip(query, query_names) if pkg not in installed]
-    )
+    missing = sorted([name for name, pkg in zip(query, query_names) if pkg not in installed])
     if missing:
         logger.warning("Package(s) not found: %s", ", ".join(missing))
 
@@ -161,9 +157,7 @@ def print_results(
         write_output("License: %s", dist.license)
         write_output("Location: %s", dist.location)
         if dist.editable_project_location is not None:
-            write_output(
-                "Editable project location: %s", dist.editable_project_location
-            )
+            write_output("Editable project location: %s", dist.editable_project_location)
         write_output("Requires: %s", ", ".join(dist.requires))
         write_output("Required-by: %s", ", ".join(dist.required_by))
 

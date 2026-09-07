@@ -82,9 +82,7 @@ def make_vcs_requirement_url(
     return req
 
 
-def find_path_to_project_root_from_repo_root(
-    location: str, repo_root: str
-) -> Optional[str]:
+def find_path_to_project_root_from_repo_root(location: str, repo_root: str) -> Optional[str]:
     """
     Find the the Python project's root by searching up the filesystem from
     `location`. Return the path to project root relative to `repo_root`.
@@ -122,7 +120,6 @@ class RemoteNotValidError(Exception):
 
 
 class RevOptions:
-
     """
     Encapsulates a VCS-specific revision to install, along with any VCS
     install options.
@@ -425,9 +422,7 @@ class VersionControl:
         return url, rev, user_pass
 
     @staticmethod
-    def make_rev_args(
-        username: Optional[str], password: Optional[HiddenText]
-    ) -> CommandArgs:
+    def make_rev_args(username: Optional[str], password: Optional[HiddenText]) -> CommandArgs:
         """
         Return the RevOptions "extra arguments" to use in obtain().
         """

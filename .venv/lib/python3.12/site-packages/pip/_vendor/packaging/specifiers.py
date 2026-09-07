@@ -106,11 +106,7 @@ class _IndividualSpecifier(BaseSpecifier):
         self._prereleases = prereleases
 
     def __repr__(self) -> str:
-        pre = (
-            f", prereleases={self.prereleases!r}"
-            if self._prereleases is not None
-            else ""
-        )
+        pre = f", prereleases={self.prereleases!r}" if self._prereleases is not None else ""
 
         return f"<{self.__class__.__name__}({str(self)!r}{pre})>"
 
@@ -136,9 +132,7 @@ class _IndividualSpecifier(BaseSpecifier):
         return self._canonical_spec == other._canonical_spec
 
     def _get_operator(self, op: str) -> CallableOperator:
-        operator_callable: CallableOperator = getattr(
-            self, f"_compare_{self._operators[op]}"
-        )
+        operator_callable: CallableOperator = getattr(self, f"_compare_{self._operators[op]}")
         return operator_callable
 
     def _coerce_version(self, version: UnparsedVersion) -> ParsedVersion:
@@ -165,9 +159,7 @@ class _IndividualSpecifier(BaseSpecifier):
     def __contains__(self, item: str) -> bool:
         return self.contains(item)
 
-    def contains(
-        self, item: UnparsedVersion, prereleases: Optional[bool] = None
-    ) -> bool:
+    def contains(self, item: UnparsedVersion, prereleases: Optional[bool] = None) -> bool:
 
         # Determine if prereleases are to be allowed or not.
         if prereleases is None:
@@ -206,9 +198,7 @@ class _IndividualSpecifier(BaseSpecifier):
                 # If our version is a prerelease, and we were not set to allow
                 # prereleases, then we'll store it for later in case nothing
                 # else matches this specifier.
-                if parsed_version.is_prerelease and not (
-                    prereleases or self.prereleases
-                ):
+                if parsed_version.is_prerelease and not (prereleases or self.prereleases):
                     found_prereleases.append(version)
                 # Either this is not a prerelease, or we should have been
                 # accepting prereleases from the beginning.
@@ -272,9 +262,7 @@ class LegacySpecifier(_IndividualSpecifier):
     def _compare_less_than_equal(self, prospective: LegacyVersion, spec: str) -> bool:
         return prospective <= self._coerce_version(spec)
 
-    def _compare_greater_than_equal(
-        self, prospective: LegacyVersion, spec: str
-    ) -> bool:
+    def _compare_greater_than_equal(self, prospective: LegacyVersion, spec: str) -> bool:
         return prospective >= self._coerce_version(spec)
 
     def _compare_less_than(self, prospective: LegacyVersion, spec: str) -> bool:
@@ -415,9 +403,7 @@ class Specifier(_IndividualSpecifier):
 
         # We want everything but the last item in the version, but we want to
         # ignore suffix segments.
-        prefix = ".".join(
-            list(itertools.takewhile(_is_not_suffix, _version_split(spec)))[:-1]
-        )
+        prefix = ".".join(list(itertools.takewhile(_is_not_suffix, _version_split(spec)))[:-1])
 
         # Add the prefix notation to the end of our string
         prefix += ".*"
@@ -449,9 +435,7 @@ class Specifier(_IndividualSpecifier):
 
             # Pad out our two sides with zeros so that they both equal the same
             # length.
-            padded_spec, padded_prospective = _pad_version(
-                split_spec, shortened_prospective
-            )
+            padded_spec, padded_prospective = _pad_version(split_spec, shortened_prospective)
 
             return padded_prospective == padded_spec
         else:
@@ -479,9 +463,7 @@ class Specifier(_IndividualSpecifier):
         return Version(prospective.public) <= Version(spec)
 
     @_require_version_compare
-    def _compare_greater_than_equal(
-        self, prospective: ParsedVersion, spec: str
-    ) -> bool:
+    def _compare_greater_than_equal(self, prospective: ParsedVersion, spec: str) -> bool:
 
         # NB: Local version identifiers are NOT permitted in the version
         # specifier, so local version labels can be universally removed from
@@ -594,9 +576,7 @@ def _version_split(version: str) -> List[str]:
 
 
 def _is_not_suffix(segment: str) -> bool:
-    return not any(
-        segment.startswith(prefix) for prefix in ("dev", "a", "b", "rc", "post")
-    )
+    return not any(segment.startswith(prefix) for prefix in ("dev", "a", "b", "rc", "post"))
 
 
 def _pad_version(left: List[str], right: List[str]) -> Tuple[List[str], List[str]]:
@@ -618,9 +598,7 @@ def _pad_version(left: List[str], right: List[str]) -> Tuple[List[str], List[str
 
 
 class SpecifierSet(BaseSpecifier):
-    def __init__(
-        self, specifiers: str = "", prereleases: Optional[bool] = None
-    ) -> None:
+    def __init__(self, specifiers: str = "", prereleases: Optional[bool] = None) -> None:
 
         # Split on , to break each individual specifier into it's own item, and
         # strip each item to remove leading/trailing whitespace.
@@ -643,11 +621,7 @@ class SpecifierSet(BaseSpecifier):
         self._prereleases = prereleases
 
     def __repr__(self) -> str:
-        pre = (
-            f", prereleases={self.prereleases!r}"
-            if self._prereleases is not None
-            else ""
-        )
+        pre = f", prereleases={self.prereleases!r}" if self._prereleases is not None else ""
 
         return f"<SpecifierSet({str(self)!r}{pre})>"
 
@@ -674,8 +648,7 @@ class SpecifierSet(BaseSpecifier):
             specifier._prereleases = self._prereleases
         else:
             raise ValueError(
-                "Cannot combine SpecifierSets with True and False prerelease "
-                "overrides."
+                "Cannot combine SpecifierSets with True and False prerelease " "overrides."
             )
 
         return specifier
@@ -719,9 +692,7 @@ class SpecifierSet(BaseSpecifier):
     def __contains__(self, item: UnparsedVersion) -> bool:
         return self.contains(item)
 
-    def contains(
-        self, item: UnparsedVersion, prereleases: Optional[bool] = None
-    ) -> bool:
+    def contains(self, item: UnparsedVersion, prereleases: Optional[bool] = None) -> bool:
 
         # Ensure that our item is a Version or LegacyVersion instance.
         if not isinstance(item, (LegacyVersion, Version)):

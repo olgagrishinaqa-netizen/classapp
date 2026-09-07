@@ -203,11 +203,7 @@ class Segment(NamedTuple):
             result_segments = (
                 cls(
                     text,
-                    (
-                        None
-                        if control
-                        else (_style + post_style if _style else post_style)
-                    ),
+                    (None if control else (_style + post_style if _style else post_style)),
                     control,
                 )
                 for text, _style, control in result_segments
@@ -297,9 +293,7 @@ class Segment(NamedTuple):
                     if _text:
                         append(cls(_text, segment_style))
                     if new_line:
-                        cropped_line = adjust_line_length(
-                            line, length, style=style, pad=pad
-                        )
+                        cropped_line = adjust_line_length(line, length, style=style, pad=pad)
                         if include_new_lines:
                             cropped_line.append(new_line_segment)
                         yield cropped_line
@@ -404,15 +398,11 @@ class Segment(NamedTuple):
         """
         _height = height or len(lines)
 
-        blank = (
-            [cls(" " * width + "\n", style)] if new_lines else [cls(" " * width, style)]
-        )
+        blank = [cls(" " * width + "\n", style)] if new_lines else [cls(" " * width, style)]
 
         adjust_line_length = cls.adjust_line_length
         shaped_lines = lines[:_height]
-        shaped_lines[:] = [
-            adjust_line_length(line, width, style=style) for line in lines
-        ]
+        shaped_lines[:] = [adjust_line_length(line, width, style=style) for line in lines]
         if len(shaped_lines) < _height:
             shaped_lines.extend([blank] * (_height - len(shaped_lines)))
         return shaped_lines
@@ -525,9 +515,7 @@ class Segment(NamedTuple):
         _Segment = Segment
         for segment in iter_segments:
             if last_segment.style == segment.style and not segment.control:
-                last_segment = _Segment(
-                    last_segment.text + segment.text, last_segment.style
-                )
+                last_segment = _Segment(last_segment.text + segment.text, last_segment.style)
             else:
                 yield last_segment
                 last_segment = segment
@@ -668,9 +656,7 @@ class Segments:
         self.segments = list(segments)
         self.new_lines = new_lines
 
-    def __rich_console__(
-        self, console: "Console", options: "ConsoleOptions"
-    ) -> "RenderResult":
+    def __rich_console__(self, console: "Console", options: "ConsoleOptions") -> "RenderResult":
         if self.new_lines:
             line = Segment.line()
             for segment in self.segments:
@@ -692,9 +678,7 @@ class SegmentLines:
         self.lines = list(lines)
         self.new_lines = new_lines
 
-    def __rich_console__(
-        self, console: "Console", options: "ConsoleOptions"
-    ) -> "RenderResult":
+    def __rich_console__(self, console: "Console", options: "ConsoleOptions") -> "RenderResult":
         if self.new_lines:
             new_line = Segment.line()
             for line in self.lines:
