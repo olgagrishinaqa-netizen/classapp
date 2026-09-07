@@ -1,10 +1,29 @@
 services:
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: classapp
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres_prod_secure_pass}
+    volumes:
+      - classapp_prod_db_data:/var/lib/postgresql/data
+    # Закрываем порт от внешнего мира, база доступна только для Flask внутри Docker сети
+    expose:
+      - "5432"
+
   web:
     image: cr.yandex/${REGISTRY_ID}/classapp:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "80:8000"
     environment:
       FLASK_CONFIG: config.ProdConfig
       SECRET_KEY: ${SECRET_KEY}
-      DATABASE_URL: ${DATABASE_URL}
-    ports:
-      - "80:8000"
-    restart: unless-stopped
+      DATABASE_URL: postgresql+psycopg2://postgres:${DB_PASSWORD:-postgres_prod_secure_pass}@db:5432/classapp
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  classapp_prod_db_data:
