@@ -23,19 +23,19 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Устанавливаем yc CLI в домашнюю директорию пользователя, где гарантированно есть права
-      - name: Install Yandex Cloud CLI
-        run: |
-          curl -sSL https://yandexcloud.net | bash -s -- -n
-          echo "/home/runner/yandex-cloud/bin" >> $GITHUB_PATH
+      # Официальный нативный способ авторизации от Yandex Cloud в GitHub Actions
+      - name: Yandex Cloud Authorize
+        uses: yandex-cloud/yc-github-actions/authorize@v2
+        with:
+          key-json: ${{ secrets.YC_SA_KEY_JSON }}
 
-      # Используем точный путь в домашнем каталоге для вызова yc
+      # Используем официальный login-action от Docker, который автоматически подхватит токен из шага выше
       - name: Login to Yandex Container Registry
-        run: |
-          echo '${{ secrets.YC_SA_KEY_JSON }}' > sa_key.json
-          /home/runner/yandex-cloud/bin/yc config set service-account-key sa_key.json
-          /home/runner/yandex-cloud/bin/yc iam create-token | docker login --username iam --password-stdin cr.yandex
-          rm sa_key.json
+        uses: docker/login-action@v3
+        with:
+          registry: cr.yandex
+          username: iam
+          password: ${{ env.YC_IAM_TOKEN }} # Переменная автоматически инжектируется плагином Яндекса
 
       - name: Build and Push to YCR
         uses: docker/build-push-action@v6
