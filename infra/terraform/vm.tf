@@ -27,7 +27,7 @@ resource "yandex_compute_instance" "vm" {
   network_interface {
     subnet_id          = yandex_vpc_subnet.subnet.id
     nat                = true
-    nat_ip_address     = yandex_vpc_address.static_ip.external_ipv4_address[0].address # Привязка статики
+    nat_ip_address     = yandex_vpc_address.static_ip.external_ipv4_address[0].address
     security_group_ids = [yandex_vpc_security_group.sg.id]
   }
 
