@@ -78,14 +78,19 @@ jobs:
             export REPO_OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
             sed -i "s/\${REPO_OWNER}/$REPO_OWNER_LOWER/g" docker-compose.prod.yml
 
-            # 5. Разворачиваем стек с помощью классического docker-compose
+            # 5. Разворачиваем стек
             export $(cat .env | xargs)
-            docker-compose -f docker-compose.prod.yml pull
-            docker-compose -f docker-compose.prod.yml up -d
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d
 
-            # 6. Даем базе данных время и применяем миграции Alembic
-            sleep 5
-            export $(cat .env | xargs)
-            docker-compose -f docker-compose.prod.yml exec -T web alembic upgrade head
+            # 6. Умное ожидание: проверяем готовность контейнера БД перед миграциями
+            echo "⏱️ Ожидаем готовности базы данных..."
+            until docker compose -f docker-compose.prod.yml exec -T db pg_isready -U postgres -d classapp; do
+              sleep 2
+            done
+
+            # 7. Применяем миграции Alembic в уже готовом окружении
+            echo "🚀 Запуск миграций базы данных..."
+            docker compose -f docker-compose.prod.yml exec -T web alembic upgrade head
 
             echo "🚀 Деплой успешно завершен! Приложение работает на http://${{ secrets.SSH_HOST }}"
