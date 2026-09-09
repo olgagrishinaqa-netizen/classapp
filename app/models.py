@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 
 from flask_login import UserMixin
@@ -7,6 +8,17 @@ from .extensions import db
 
 
 class User(UserMixin, db.Model):
+    @staticmethod
+    def normalize_phone(raw_phone):
+        if raw_phone is None:
+            return ""
+        digits = re.sub(r"\D+", "", str(raw_phone))
+        if not digits:
+            return ""
+        if digits.startswith("8") and len(digits) == 11:
+            digits = "7" + digits[1:]
+        return digits
+
     id = db.Column(db.Integer, primary_key=True)
     full_name = db.Column(db.String(160), nullable=False)
     phone = db.Column(db.String(32), unique=True, nullable=False, index=True)
@@ -48,6 +60,23 @@ class Task(db.Model):
     description = db.Column(db.Text, default="")
     status = db.Column(db.String(20), nullable=False, default="created")
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class News(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text, nullable=False, default="")
+    status = db.Column(db.String(20), nullable=False, default="draft")
+    image_name = db.Column(db.String(255))
+    image_path = db.Column(db.String(255))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    @property
+    def image_url(self):
+        if not self.image_path:
+            return None
+        return f"/uploads/{self.image_path}"
 
 
 class TaskComment(db.Model):

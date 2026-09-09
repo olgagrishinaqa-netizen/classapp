@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from werkzeug.utils import secure_filename
 
 from .extensions import db
-from .models import ExpenseReport, Task, User
+from .models import ExpenseReport, News, Task, User
 
 bp = Blueprint("main", __name__)
 
@@ -50,6 +50,18 @@ def task_json(task):
     return {"id": task.id, "title": task.title, "description": task.description or "", "status": task.status, "status_label": STATUS_LABELS[task.status], "created_at": task.created_at.strftime("%d.%m.%Y")}
 
 
+def news_json(news):
+    return {
+        "id": news.id,
+        "title": news.title,
+        "description": news.description or "",
+        "status": news.status,
+        "image_url": news.image_url,
+        "created_at": news.created_at.strftime("%d.%m.%Y %H:%M"),
+        "updated_at": news.updated_at.strftime("%d.%m.%Y %H:%M"),
+    }
+
+
 @bp.get("/")
 def index():
     return render_template("index.html")
@@ -57,8 +69,11 @@ def index():
 
 @bp.post("/api/login")
 def login():
-    data = request.get_json(silent=True) or {}
-    user = User.query.filter_by(phone=(data.get("phone") or "").strip()).first()
+    data = request.get_json(silent=True)
+    if data is None:
+        data = request.form or {}
+    phone = User.normalize_phone(data.get("phone"))
+    user = User.query.filter_by(phone=phone).first()
     if not user or not user.check_password(data.get("password") or ""):
         return jsonify(error="Неверный телефон или пароль"), 401
     session["user_id"] = user.id
@@ -106,7 +121,10 @@ def create_user():
         return jsonify(error="Заполните все обязательные поля"), 400
     if data["role"] not in {"parent", "student"}:
         return jsonify(error="Роль должна быть Родитель или Ученик"), 400
-    user = User(full_name=data["full_name"].strip(), phone=data["phone"].strip(), role=data["role"])
+    normalized_phone = User.normalize_phone(data["phone"])
+    if not normalized_phone:
+        return jsonify(error="Введите корректный номер телефона"), 400
+    user = User(full_name=data["full_name"].strip(), phone=normalized_phone, role=data["role"])
     user.set_password(data["password"])
     db.session.add(user)
     try:
@@ -124,9 +142,14 @@ def update_user(user_id):
     if not user:
         return jsonify(error="Пользователь не найден"), 404
     data = request.get_json(silent=True) or {}
-    for field in ("full_name", "phone", "role"):
+    for field in ("full_name", "role"):
         if field in data and str(data[field]).strip():
             setattr(user, field, str(data[field]).strip())
+    if "phone" in data and str(data["phone"]).strip():
+        normalized_phone = User.normalize_phone(data["phone"])
+        if not normalized_phone:
+            return jsonify(error="Введите корректный номер телефона"), 400
+        user.phone = normalized_phone
     if data.get("password"):
         user.set_password(data["password"])
     try:
@@ -135,6 +158,73 @@ def update_user(user_id):
         db.session.rollback()
         return jsonify(error="Такой номер телефона уже используется"), 409
     return jsonify(user=user_json(user))
+
+
+@bp.get("/api/news")
+@auth_required
+def news():
+    user = current_user()
+    query = News.query.order_by(News.created_at.desc())
+    if not user or not user.is_admin:
+        query = query.filter_by(status="published")
+    return jsonify(news=[news_json(item) for item in query.all()])
+
+
+@bp.post("/api/news")
+@admin_required
+def create_news():
+    data = request.form if request.form else (request.get_json(silent=True) or {})
+    title = (data.get("title") or "").strip()
+    description = (data.get("description") or "").strip()
+    status = (data.get("status") or "draft").strip()
+    if not title or not description:
+        return jsonify(error="Укажите заголовок и описание новости"), 400
+    if status not in {"draft", "published"}:
+        return jsonify(error="Некорректный статус новости"), 400
+
+    image = request.files.get("image") if hasattr(request, "files") else None
+    image_name = None
+    image_path = None
+    if image and image.filename:
+        image_name = secure_filename(image.filename)
+        image_path = f"{uuid4().hex}_{image_name}"
+        upload_folder = current_app.config.get("UPLOAD_FOLDER", os.path.join(os.getcwd(), "uploads"))
+        os.makedirs(upload_folder, exist_ok=True)
+        image.save(os.path.join(upload_folder, image_path))
+
+    news_item = News(title=title, description=description, status=status, image_name=image_name, image_path=image_path)
+    db.session.add(news_item)
+    db.session.commit()
+    return jsonify(news=news_json(news_item)), 201
+
+
+@bp.patch("/api/news/<int:news_id>")
+@admin_required
+def update_news(news_id):
+    news_item = db.session.get(News, news_id)
+    if not news_item:
+        return jsonify(error="Новость не найдена"), 404
+
+    data = request.form if request.form else (request.get_json(silent=True) or {})
+    if "title" in data and str(data.get("title") or "").strip():
+        news_item.title = str(data["title"]).strip()
+    if "description" in data and str(data.get("description") or "").strip():
+        news_item.description = str(data["description"]).strip()
+    if "status" in data and str(data.get("status") or "").strip() in {"draft", "published"}:
+        news_item.status = str(data["status"]).strip()
+
+    image = request.files.get("image") if hasattr(request, "files") else None
+    if image and image.filename:
+        image_name = secure_filename(image.filename)
+        image_path = f"{uuid4().hex}_{image_name}"
+        upload_folder = current_app.config.get("UPLOAD_FOLDER", os.path.join(os.getcwd(), "uploads"))
+        os.makedirs(upload_folder, exist_ok=True)
+        image.save(os.path.join(upload_folder, image_path))
+        news_item.image_name = image_name
+        news_item.image_path = image_path
+
+    db.session.commit()
+    return jsonify(news=news_json(news_item))
 
 
 @bp.get("/api/tasks")
