@@ -15,7 +15,7 @@ class TestConfig:
     WTF_CSRF_ENABLED = False
     SQLALCHEMY_DATABASE_URI = os.environ.get(
         "TEST_DATABASE_URL",
-        "postgresql+psycopg2://postgres:postgres@localhost:5432/classapp_test",
+        "sqlite:///test_classapp.db",
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
