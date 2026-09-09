@@ -2,7 +2,7 @@ name: Build and Push to GHCR
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   workflow_dispatch: {}
 
 concurrency:
@@ -32,6 +32,13 @@ jobs:
         env:
           OWNER: ${{ github.repository_owner }}
 
+      # Тег по ветке — нужен, т.к. теперь сборка идёт на любую ветку, а не только main
+      - name: Sanitize branch name for tag
+        id: branch_tag
+        run: |
+          SAFE_BRANCH=$(echo "${{ github.ref_name }}" | tr '/' '-' | tr '[:upper:]' '[:lower:]')
+          echo "safe_branch=$SAFE_BRANCH" >> $GITHUB_OUTPUT
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -48,7 +55,24 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ steps.repo_owner.outputs.owner }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-            ghcr.io/${{ steps.repo_owner.outputs.owner }}/${{ env.IMAGE_NAME }}:latest
+            ghcr.io/${{ steps.repo_owner.outputs.owner }}/${{ env.IMAGE_NAME }}:${{ steps.branch_tag.outputs.safe_branch }}-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # 'latest' обновляем только с main — без пересборки, просто доп. тег на тот же манифест
+      - name: Tag as latest (main only)
+        if: github.ref_name == 'main'
+        run: |
+          docker buildx imagetools create \
+            -t ghcr.io/${{ steps.repo_owner.outputs.owner }}/${{ env.IMAGE_NAME }}:latest \
+            ghcr.io/${{ steps.repo_owner.outputs.owner }}/${{ env.IMAGE_NAME }}:${{ steps.branch_tag.outputs.safe_branch }}-${{ github.sha }}
+
+      - name: Notify build result
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then STATUS="✅ SUCCESS"; else STATUS="❌ FAILED"; fi
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d text="Build ${STATUS} — classapp
+          Branch: ${{ github.ref_name }}
+          Image: ${{ steps.branch_tag.outputs.safe_branch }}-${{ github.sha }}"
