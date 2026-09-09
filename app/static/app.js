@@ -5,9 +5,13 @@ const columns = {created: 'Общий список', in_progress: 'В работ
 
 async function api(url, options = {}) {
   const response = await fetch(url, options);
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Произошла ошибка');
-  return data;
+  const contentType = response.headers.get('content-type') || '';
+  const raw = contentType.includes('application/json') ? await response.json() : await response.text();
+  if (!response.ok) {
+    const message = typeof raw === 'string' ? raw : raw?.error || 'Произошла ошибка';
+    throw new Error(message);
+  }
+  return raw;
 }
 function toast(message) { const node = $('#toast'); node.textContent = message; node.classList.add('show'); setTimeout(() => node.classList.remove('show'), 2600); }
 function formData(form) { return Object.fromEntries(new FormData(form)); }
