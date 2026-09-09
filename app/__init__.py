@@ -38,15 +38,22 @@ def create_app(config_object=None):
         admin_phone = User.normalize_phone(app.config.get("ADMIN_PHONE", "79990000000"))
         admin_name = app.config.get("ADMIN_NAME", "Администратор")
         admin_password = app.config.get("ADMIN_PASSWORD", "admin123")
-        if not User.query.filter_by(phone=admin_phone).first():
+        admin = User.query.filter_by(phone=admin_phone).first()
+        if admin is None:
             admin = User(
                 full_name=admin_name,
                 phone=admin_phone,
                 role="admin",
             )
-            admin.set_password(admin_password)
             db.session.add(admin)
-            db.session.commit()
+        else:
+            admin.full_name = admin_name
+            admin.role = "admin"
+
+        if not admin.password_hash or not admin.check_password(admin_password):
+            admin.set_password(admin_password)
+
+        db.session.commit()
 
     if PrometheusMetrics is not None:
         PrometheusMetrics(app)
