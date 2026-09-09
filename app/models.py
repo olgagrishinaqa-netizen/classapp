@@ -2,6 +2,7 @@ import re
 from datetime import datetime
 
 from flask_login import UserMixin
+from sqlalchemy.orm import validates
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from .extensions import db
@@ -18,6 +19,10 @@ class User(UserMixin, db.Model):
         if digits.startswith("8") and len(digits) == 11:
             digits = "7" + digits[1:]
         return digits
+
+    @validates("phone")
+    def validate_phone(self, key, value):
+        return self.normalize_phone(value)
 
     id = db.Column(db.Integer, primary_key=True)
     full_name = db.Column(db.String(160), nullable=False)
