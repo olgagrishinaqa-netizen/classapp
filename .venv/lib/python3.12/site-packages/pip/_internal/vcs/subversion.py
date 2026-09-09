@@ -94,7 +94,9 @@ class Subversion(VersionControl):
         return url, rev, user_pass
 
     @staticmethod
-    def make_rev_args(username: Optional[str], password: Optional[HiddenText]) -> CommandArgs:
+    def make_rev_args(
+        username: Optional[str], password: Optional[HiddenText]
+    ) -> CommandArgs:
         extra_args: CommandArgs = []
         if username:
             extra_args += ["--username", username]
