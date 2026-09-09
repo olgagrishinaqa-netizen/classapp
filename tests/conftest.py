@@ -37,3 +37,44 @@ def client(app):
 @pytest.fixture()
 def db(app):
     return _db
+
+
+class TestProdConfigInitApp:
+    """Тесты fail-fast инициализации продакшн-конфигурации для диплома."""
+
+    def test_prod_init_app_raises_when_secret_key_missing(self, monkeypatch):
+        from flask import Flask
+        from config import ProdConfig
+
+        monkeypatch.delenv("SECRET_KEY", raising=False)
+        monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg2://u:p@h/db")
+
+        app = Flask(__name__)
+        with pytest.raises(RuntimeError, match="SECRET_KEY"):
+            ProdConfig.init_app(app)
+
+    def test_prod_init_app_raises_when_database_url_missing(self, monkeypatch):
+        from flask import Flask
+        from config import ProdConfig
+
+        monkeypatch.setenv("SECRET_KEY", "real-secret")
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+
+        app = Flask(__name__)
+        with pytest.raises(RuntimeError, match="DATABASE_URL"):
+            ProdConfig.init_app(app)
+
+    def test_prod_init_app_passes_when_both_env_vars_set(self, monkeypatch):
+        from flask import Flask
+        from config import ProdConfig
+
+        monkeypatch.setenv("SECRET_KEY", "real-secret")
+        monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg2://u:p@h/db")
+
+        app = Flask(__name__)
+        ProdConfig.init_app(app)  # Не должно выбросить исключение
+
+    def test_prod_config_session_cookie_secure_is_true(self):
+        from config import ProdConfig
+
+        assert ProdConfig.SESSION_COOKIE_SECURE is True
