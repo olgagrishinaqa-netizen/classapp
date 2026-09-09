@@ -7,7 +7,7 @@ from .extensions import db  # и др. ваши расширения: login_mana
 
 try:
     from prometheus_flask_exporter import PrometheusMetrics
-except ImportError:  # пакет опционален для локальной разработки без мониторинга
+except ImportError:  # пакет опционален для локальной разр без мониторинга
     PrometheusMetrics = None
 
 
@@ -28,7 +28,8 @@ def create_app(config_object=None):
 
     @app.get("/healthz")
     def healthz():
-        """Liveness/readiness-проба: используется и тестами CI, и Docker healthcheck'ом."""
+        """Liveness/readiness-проба: испол-я и тестами CI,
+         и Docker healthcheck'ом."""
         db_status = "ok"
         try:
             db.session.execute(text("SELECT 1"))
