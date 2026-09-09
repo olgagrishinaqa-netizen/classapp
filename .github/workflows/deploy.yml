@@ -14,7 +14,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Наш успешно работающий шаг деплоя через SSH
+      - name: Copy compose & monitoring config to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ubuntu
+          key: ${{ secrets.SSH_KEY }}
+          source: "docker-compose.prod.yml,monitoring/prometheus.yml"
+          target: "/opt/classapp"
+
       - name: SSH Remote Deploy
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -23,69 +31,34 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           script: |
             set -e
-
-            # 1. Создаем рабочую директорию проекта
             sudo mkdir -p /opt/classapp
             sudo chown -R $USER:$USER /opt/classapp
             cd /opt/classapp
 
-            # 2. Пишем стандартный файл docker-compose.yml напрямую на сервере (убираем -f)
-            cat > docker-compose.yml <<'YML'
-            services:
-              db:
-                image: postgres:15
-                restart: unless-stopped
-                environment:
-                  POSTGRES_DB: classapp
-                  POSTGRES_USER: postgres
-                  POSTGRES_PASSWORD: ${DB_PASSWORD}
-                volumes:
-                  - classapp_prod_db_data:/var/lib/postgresql/data
-                expose:
-                  - "5432"
-                healthcheck:
-                  test: ["CMD-SHELL", "pg_isready -U postgres -d classapp"]
-                  interval: 5s
-                  timeout: 5s
-                  retries: 5
+            REPO_OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
 
-              web:
-                image: ghcr.io/${REPO_OWNER}/classapp:${IMAGE_TAG}
-                restart: unless-stopped
-                ports:
-                  - "80:8000"
-                command: gunicorn -w 2 -b 0.0.0.0:8000 "app:create_app()"
-                environment:
-                  FLASK_CONFIG: config.ProdConfig
-                  SECRET_KEY: ${SECRET_KEY}
-                  DATABASE_URL: postgresql+psycopg2://postgres:${DB_PASSWORD}@db:5432/classapp
-                  PYTHONPATH: /app
-                depends_on:
-                  db:
-                    condition: service_healthy
-
-            volumes:
-              classapp_prod_db_data:
-            YML
-
-            # 3. Генерируем файл переменных окружения .env
             cat > .env <<ENV
-            REPO_OWNER=${{ github.repository_owner }}
-            IMAGE_TAG=${{ github.sha }}
+            REPO_OWNER=${REPO_OWNER_LOWER}
+            IMAGE_TAG=main-${{ github.event.workflow_run.head_sha }}
             SECRET_KEY=${{ secrets.APP_SECRET_KEY }}
             DB_PASSWORD=${{ secrets.APP_DB_PASSWORD }}
+            GRAFANA_ADMIN_PASSWORD=${{ secrets.GRAFANA_ADMIN_PASSWORD }}
             ENV
 
-            # 4. Принудительно приводим имя владельца репозитория к нижнему регистру для Docker
-            export REPO_OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-            sed -i "s/\${REPO_OWNER}/$REPO_OWNER_LOWER/g" docker-compose.yml
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d
 
-            # 5. Разворачиваем стек: чистые, нативные команды без флагов -f
-            docker compose pull
-            docker compose up -d
-
-            # 6. Даем базе данных время и применяем миграции Alembic с пробросом пути PYTHONPATH
             sleep 5
-            docker compose exec -T -e PYTHONPATH=/app web alembic upgrade head
+            docker compose -f docker-compose.prod.yml exec -T -e PYTHONPATH=/app web alembic upgrade head
 
-            echo "🚀 Деплой успешно завершен! Приложение работает на http://${{ secrets.SSH_HOST }}"
+            echo "🚀 Деплой завершён: http://${{ secrets.SSH_HOST }}"
+
+      - name: Notify deploy result
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then STATUS="✅ SUCCESS"; else STATUS="❌ FAILED"; fi
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d text="Deploy ${STATUS} — classapp
+          Host: ${{ secrets.SSH_HOST }}
+          Commit: ${{ github.event.workflow_run.head_sha }}"

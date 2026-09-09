@@ -5,25 +5,61 @@ services:
     environment:
       POSTGRES_DB: classapp
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres_prod_secure_pass}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - classapp_prod_db_data:/var/lib/postgresql/data
-    # Закрываем порт от внешнего мира, база доступна только для Flask внутри Docker сети
     expose:
       - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d classapp"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   web:
-    image: cr.yandex/${REGISTRY_ID}/classapp:${IMAGE_TAG:-latest}
+    image: ghcr.io/${REPO_OWNER}/classapp:${IMAGE_TAG}
     restart: unless-stopped
     ports:
       - "80:8000"
+    command: gunicorn -w 2 -b 0.0.0.0:8000 "app:create_app()"
     environment:
       FLASK_CONFIG: config.ProdConfig
       SECRET_KEY: ${SECRET_KEY}
-      DATABASE_URL: postgresql+psycopg2://postgres:${DB_PASSWORD:-postgres_prod_secure_pass}@db:5432/classapp
+      DATABASE_URL: postgresql+psycopg2://postgres:${DB_PASSWORD}@db:5432/classapp
+      PYTHONPATH: /app
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
     depends_on:
       db:
         condition: service_healthy
 
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - web
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
 volumes:
   classapp_prod_db_data:
+  prometheus_data:
+  grafana_data:
