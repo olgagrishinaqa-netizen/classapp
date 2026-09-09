@@ -5,6 +5,7 @@ from sqlalchemy import text
 from werkzeug.utils import import_string
 
 from .extensions import db
+from .models import User
 
 try:
     from prometheus_flask_exporter import PrometheusMetrics
@@ -32,8 +33,27 @@ def create_app(config_object=None):
     # Инициализация расширений
     db.init_app(app)
 
+    with app.app_context():
+        db.create_all()
+        admin_phone = app.config.get("ADMIN_PHONE", "79990000000")
+        admin_name = app.config.get("ADMIN_NAME", "Администратор")
+        admin_password = app.config.get("ADMIN_PASSWORD", "admin123")
+        if not User.query.filter_by(phone=admin_phone).first():
+            admin = User(
+                full_name=admin_name,
+                phone=admin_phone,
+                role="admin",
+            )
+            admin.set_password(admin_password)
+            db.session.add(admin)
+            db.session.commit()
+
     if PrometheusMetrics is not None:
         PrometheusMetrics(app)
+
+    from .routes import bp
+
+    app.register_blueprint(bp)
 
     @app.get("/healthz")
     def healthz():
