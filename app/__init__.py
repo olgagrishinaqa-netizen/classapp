@@ -35,7 +35,7 @@ def create_app(config_object=None):
 
     with app.app_context():
         db.create_all()
-        admin_phone = app.config.get("ADMIN_PHONE", "79990000000")
+        admin_phone = User.normalize_phone(app.config.get("ADMIN_PHONE", "79990000000"))
         admin_name = app.config.get("ADMIN_NAME", "Администратор")
         admin_password = app.config.get("ADMIN_PASSWORD", "admin123")
         if not User.query.filter_by(phone=admin_phone).first():
