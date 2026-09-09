@@ -13,7 +13,7 @@ resource "yandex_compute_instance" "vm" {
   resources {
     cores         = 2
     core_fraction = 50
-    memory        = 2
+    memory        = 4  # Увеличиваем до стабильных 4 ГБ RAM для продакшена
   }
 
   boot_disk {
