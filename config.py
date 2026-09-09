@@ -7,6 +7,10 @@ class BaseConfig:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
+    ADMIN_NAME = os.getenv("ADMIN_NAME", "Администратор")
+    ADMIN_PHONE = os.getenv("ADMIN_PHONE", "79990000000")
+    ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
+    UPLOAD_FOLDER = os.getenv("UPLOAD_FOLDER", os.path.join(os.getcwd(), "uploads"))
 
     @staticmethod
     def init_app(app):

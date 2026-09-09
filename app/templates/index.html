@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Класс | Управление</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+  <div id="login-view" class="login-shell">
+    <section class="login-card">
+      <div class="brand-mark">К</div>
+      <p class="eyebrow">КЛАСС · ПОРТАЛ</p>
+      <h1>Всё важное<br><em>в одном месте.</em></h1>
+      <p class="muted">Войдите по номеру телефона, чтобы продолжить.</p>
+      <form id="login-form">
+        <label>Номер телефона<input name="phone" type="tel" placeholder="79990000000" required></label>
+        <label>Пароль<input name="password" type="password" placeholder="Введите пароль" required></label>
+        <button class="primary wide" type="submit">Войти <span>→</span></button>
+        <p id="login-error" class="error"></p>
+      </form>
+      <p class="hint">Демо-доступ администратора: 79990000000 / admin123</p>
+    </section>
+    <div class="login-art"><div class="art-note">Организуем<br><strong>каждый день</strong></div><div class="art-circle"></div></div>
+  </div>
+
+  <div id="app-view" class="app-shell hidden">
+    <aside class="sidebar">
+      <div class="logo"><span>К</span><div>Класс<small>рабочее пространство</small></div></div>
+      <nav id="nav"><button data-page="dashboard" class="active"><span>⌂</span>Обзор</button><button data-page="tasks"><span>✓</span>Задачи</button><button data-page="reports" class="admin-only"><span>↗</span>Отчетность</button><button data-page="users" class="admin-only"><span>◎</span>Пользователи</button></nav>
+      <div class="sidebar-bottom"><div class="support"><span>✦</span><div><b>Есть вопросы?</b><small>Напишите администратору</small></div></div><button id="logout" class="logout">Выйти <span>↪</span></button></div>
+    </aside>
+    <main class="main">
+      <header class="topbar"><div><p class="eyebrow" id="date-label"></p><h2 id="page-title">Добро пожаловать</h2></div><div class="profile"><div class="avatar" id="avatar">А</div><div><b id="user-name">Пользователь</b><small id="user-role">Родитель</small></div><select id="role-switch"><option value="parent">Родитель</option><option value="admin">Админ</option></select></div></header>
+      <div id="toast" class="toast"></div>
+      <section id="dashboard-page" class="page"><div class="hero-banner"><div><p class="eyebrow">СЕГОДНЯ</p><h3>Спокойный день начинается<br>с понятного плана.</h3></div><div class="hero-sun">✦</div></div><div class="section-head"><div><p class="eyebrow">АКТИВНОСТЬ</p><h3>Задачи класса</h3></div><button class="text-button" data-page="tasks">Все задачи →</button></div><div id="dashboard-kanban" class="kanban"></div></section>
+      <section id="tasks-page" class="page hidden"><div class="section-head"><div><p class="eyebrow">ПЛАНИРОВАНИЕ</p><h3>Задачи класса</h3></div><button id="new-task" class="primary admin-only">+ Новая задача</button></div><div id="task-form" class="form-panel hidden"><input id="task-title" placeholder="Название задачи"><textarea id="task-description" placeholder="Короткое описание (необязательно)"></textarea><div><button id="save-task" class="primary">Создать</button><button id="cancel-task" class="ghost">Отмена</button></div></div><div id="tasks-kanban" class="kanban"></div></section>
+      <section id="users-page" class="page hidden"><div class="section-head"><div><p class="eyebrow">КОМАНДА</p><h3>Пользователи</h3></div><button id="new-user" class="primary">+ Добавить</button></div><div id="user-form" class="form-panel hidden"><div class="form-grid"><input id="user-full-name" placeholder="ФИО"><input id="user-phone" placeholder="Телефон"><select id="user-role"><option value="parent">Родитель</option><option value="student">Ученик</option></select><input id="user-password" type="password" placeholder="Пароль"></div><button id="save-user" class="primary">Создать пользователя</button></div><div id="users-list" class="table-wrap"></div></section>
+      <section id="reports-page" class="page hidden"><div class="section-head"><div><p class="eyebrow">ФИНАНСЫ</p><h3>Отчетность</h3></div></div><div class="report-grid"><div class="form-panel"><h4>Новый отчет</h4><label>Сумма поступления<input id="income" type="number" min="0" step="0.01" placeholder="0 ₽"></label><div id="expense-items"></div><button id="add-expense" class="ghost">+ Добавить статью расхода</button><label>Фото чека<input id="receipt" type="file" accept="image/*"></label><button id="save-report" class="primary">Сохранить отчет</button></div><div><div id="report-summary" class="summary-card"></div><div id="reports-list" class="reports-list"></div></div></div></section>
+    </main>
+  </div>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
