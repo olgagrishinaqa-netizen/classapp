@@ -49,23 +49,9 @@ jobs:
     name: Tests (pytest)
     runs-on: ubuntu-latest
     needs: lint
-    services:
-      db:
-        image: postgres:15
-        env:
-          POSTGRES_DB: classapp_test
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d classapp_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 5
     env:
       FLASK_CONFIG: config.DevConfig
-      TEST_DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/classapp_test
+      TEST_DATABASE_URL: sqlite:///test_classapp.db
       PYTHONPATH: ${{ github.workspace }}
     steps:
       - name: Checkout code
