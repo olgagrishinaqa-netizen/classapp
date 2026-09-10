@@ -25,7 +25,9 @@ class DevConfig(BaseConfig):
 
 class ProdConfig(BaseConfig):
     DEBUG = False
-    SESSION_COOKIE_SECURE = True  # cookie только по HTTPS
+    # By default do not force secure-only cookies unless explicitly configured.
+    # In many deployments TLS is terminated by a reverse proxy; enable by env var when TLS is present.
+    SESSION_COOKIE_SECURE = str(os.getenv("SESSION_COOKIE_SECURE", "False")).lower() in ("1", "true", "yes")
 
     @staticmethod
     def init_app(app):
