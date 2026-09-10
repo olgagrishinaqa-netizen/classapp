@@ -32,6 +32,8 @@ jobs:
           envs: APP_SECRET_KEY,APP_DB_PASSWORD,GRAFANA_ADMIN_PASSWORD
           script: |
             set -e
+            test -n "$APP_SECRET_KEY"
+            test -n "$APP_DB_PASSWORD"
             sudo mkdir -p /opt/classapp
             sudo chown -R $USER:$USER /opt/classapp
             cd /opt/classapp
@@ -53,6 +55,10 @@ jobs:
             docker compose -f docker-compose.prod.yml exec -T -e PYTHONPATH=/app web alembic upgrade head
 
             echo "🚀 Деплой завершён: http://${{ secrets.SSH_HOST }}"
+        env:
+          APP_SECRET_KEY: ${{ secrets.APP_SECRET_KEY }}
+          APP_DB_PASSWORD: ${{ secrets.APP_DB_PASSWORD }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
 
       - name: Notify deploy result
         if: always()
