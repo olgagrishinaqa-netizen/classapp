@@ -51,7 +51,7 @@ jobs:
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d
 
-            sleep 5
+            sleep 20
             docker compose -f docker-compose.prod.yml exec -T -e PYTHONPATH=/app web alembic upgrade head
 
             echo "🚀 Деплой завершён: http://${{ secrets.SSH_HOST }}"
