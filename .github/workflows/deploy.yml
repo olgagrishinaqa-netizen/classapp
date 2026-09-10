@@ -48,6 +48,8 @@ jobs:
             GRAFANA_ADMIN_PASSWORD=$GRAFANA_ADMIN_PASSWORD
             ENV
 
+            chmod 600 .env
+
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d
 
