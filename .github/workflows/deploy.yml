@@ -29,6 +29,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ubuntu
           key: ${{ secrets.SSH_KEY }}
+          envs: APP_SECRET_KEY,APP_DB_PASSWORD,GRAFANA_ADMIN_PASSWORD
           script: |
             set -e
             sudo mkdir -p /opt/classapp
@@ -40,9 +41,9 @@ jobs:
             cat > .env <<ENV
             REPO_OWNER=${REPO_OWNER_LOWER}
             IMAGE_TAG=main-${{ github.event.workflow_run.head_sha }}
-            SECRET_KEY=${{ secrets.APP_SECRET_KEY }}
-            DB_PASSWORD=${{ secrets.APP_DB_PASSWORD }}
-            GRAFANA_ADMIN_PASSWORD=${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+            SECRET_KEY=$APP_SECRET_KEY
+            DB_PASSWORD=$APP_DB_PASSWORD
+            GRAFANA_ADMIN_PASSWORD=$GRAFANA_ADMIN_PASSWORD
             ENV
 
             docker compose -f docker-compose.prod.yml pull
