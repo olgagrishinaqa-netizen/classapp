@@ -43,7 +43,13 @@ def admin_required(view):
 
 
 def user_json(user):
-    return {"id": user.id, "full_name": user.full_name, "phone": user.phone, "role": user.role, "role_label": ROLE_LABELS[user.role]}
+    return {
+        "id": user.id,
+        "full_name": user.full_name,
+        "phone": user.phone,
+        "role": user.role,
+        "role_label": ROLE_LABELS.get(user.role, user.role),
+    }
 
 
 def task_json(task):

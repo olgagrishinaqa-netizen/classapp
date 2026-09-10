@@ -23,6 +23,35 @@ def test_user_creation_normalizes_phone(db):
     assert User.query.filter_by(phone="79991234567").count() == 1
 
 
+def test_login_rejects_invalid_password_hash_without_server_error(client, db):
+    user = User(full_name="Поврежденный пользователь", phone="79991234568", role="parent", password_hash="legacy")
+    db.session.add(user)
+    db.session.commit()
+
+    response = client.post(
+        "/api/login",
+        json={"phone": "79991234568", "password": "secure-pass"},
+    )
+
+    assert response.status_code == 401
+    assert response.get_json()["error"] == "Неверный телефон или пароль"
+
+
+def test_login_returns_users_with_unknown_legacy_role(client, db):
+    user = User(full_name="Старый пользователь", phone="79991234569", role="teacher")
+    user.set_password("secure-pass")
+    db.session.add(user)
+    db.session.commit()
+
+    response = client.post(
+        "/api/login",
+        json={"phone": "79991234569", "password": "secure-pass"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["user"]["role_label"] == "teacher"
+
+
 def test_admin_password_is_reset_to_default_on_bootstrap(tmp_path):
     db_path = tmp_path / "bootstrap-admin.db"
 
