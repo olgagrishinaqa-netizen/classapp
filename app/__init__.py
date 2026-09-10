@@ -62,6 +62,21 @@ def create_app(config_object=None):
 
     app.register_blueprint(bp)
 
+    @app.errorhandler(Exception)
+    def handle_exception(e):
+        # Логируем полную трассировку для дальнейшей диагностики
+        import traceback
+
+        tb = traceback.format_exc()
+        app.logger.error("Unhandled exception:\n%s", tb)
+        # Всегда возвращаем JSON для API-запросов — это удобнее для фронтенда и логирования
+        from flask import request
+
+        if request.path.startswith("/api/"):
+            return jsonify(error="Internal Server Error"), 500
+        # Для обычных страниц возвращаем тот же ответ в виде JSON (без утечки подробностей)
+        return jsonify(error="Internal Server Error"), 500
+
     @app.get("/healthz")
     def healthz():
         """Liveness/readiness-проба для CI и Docker healthcheck."""
