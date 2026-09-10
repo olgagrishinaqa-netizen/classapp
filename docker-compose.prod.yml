@@ -25,6 +25,7 @@ services:
     environment:
       FLASK_CONFIG: config.ProdConfig
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
+      DB_PASSWORD: ${DB_PASSWORD}
       DATABASE_URL: postgresql+psycopg2://postgres:${DB_PASSWORD:?DB_PASSWORD is required}@db:5432/classapp
       PYTHONPATH: /app
     healthcheck:
