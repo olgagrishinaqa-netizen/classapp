@@ -34,7 +34,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
       DB_PASSWORD: ${DB_PASSWORD}
       POSTGRES_HOST: db
-      DATABASE_URL: postgresql+psycopg2://postgres:${DB_PASSWORD:?DB_PASSWORD is required}@db:5432/classapp
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD:?DB_PASSWORD is required}@db:5432/classapp
       PYTHONPATH: /app
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
