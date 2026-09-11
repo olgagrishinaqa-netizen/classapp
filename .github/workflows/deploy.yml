@@ -14,6 +14,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # ШАГ 1: Сначала готовим сервер и права через SSH, а не наоборот
+      - name: Prepare Server Directories
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ubuntu
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            sudo mkdir -p /opt/classapp
+            sudo chown -R ubuntu:ubuntu /opt/classapp
+
+      # ШАГ 2: Теперь безопасно копируем файлы, так как права уже есть
       - name: Copy compose & monitoring config to server
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -23,6 +35,7 @@ jobs:
           source: "docker-compose.prod.yml,monitoring/prometheus.yml"
           target: "/opt/classapp"
 
+      # ШАГ 3: Деплой с гарантированным ожиданием готовности базы данных
       - name: SSH Remote Deploy
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -32,42 +45,70 @@ jobs:
           envs: APP_SECRET_KEY,APP_DB_PASSWORD,GRAFANA_ADMIN_PASSWORD
           script: |
             set -e
-            test -n "$APP_SECRET_KEY"
-            test -n "$APP_DB_PASSWORD"
-            sudo mkdir -p /opt/classapp
-            sudo chown -R $USER:$USER /opt/classapp
+            
+            # Валидация секретов перед запуском
+            if [ -z "$APP_SECRET_KEY" ] || [ -z "$APP_DB_PASSWORD" ]; then
+              echo "❌ Ошибка: Критические секреты сборки не заданы!"
+              exit 1
+            fi
+            
             cd /opt/classapp
-
             REPO_OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-
-            cat > .env <<ENV
+            
+            # Безопасная запись конфига .env
+            cat << ENV > .env
             REPO_OWNER=${REPO_OWNER_LOWER}
             IMAGE_TAG=main-${{ github.event.workflow_run.head_sha }}
-            SECRET_KEY=$APP_SECRET_KEY
-            DB_PASSWORD=$APP_DB_PASSWORD
-            GRAFANA_ADMIN_PASSWORD=$GRAFANA_ADMIN_PASSWORD
+            SECRET_KEY=${APP_SECRET_KEY}
+            DB_PASSWORD=${APP_DB_PASSWORD}
+            GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
             ENV
-
             chmod 600 .env
-
+            
+            echo "Pulling new images..."
             docker compose -f docker-compose.prod.yml pull
+            
+            echo "Starting containers..."
             docker compose -f docker-compose.prod.yml up -d
+            
+            # Синьорский подход вместо sleep 20: ждем, пока БД реально начнет принимать соединения
+            echo "Waiting for PostgreSQL database to be ready..."
+            for i in {1..30}; do
+              if docker compose -f docker-compose.prod.yml exec -T db pg_isready -U postgres; then
+                echo "Database is ready!"
+                break
+              fi
+              echo "Waiting... ($i/30)"
+              sleep 2
+            done
 
-            sleep 20
+            echo "Running database migrations..."
             docker compose -f docker-compose.prod.yml exec -T -e PYTHONPATH=/app web alembic upgrade head
-
-            echo "🚀 Деплой завершён: http://${{ secrets.SSH_HOST }}"
+            
+            echo "🚀 Деплой успешно завершён!"
         env:
           APP_SECRET_KEY: ${{ secrets.APP_SECRET_KEY }}
           APP_DB_PASSWORD: ${{ secrets.APP_DB_PASSWORD }}
           GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
 
+      # ШАГ 4: Надежные и стабильные уведомления в Telegram (с экранированием строк)
       - name: Notify deploy result
         if: always()
         run: |
-          if [ "${{ job.status }}" = "success" ]; then STATUS="✅ SUCCESS"; else STATUS="❌ FAILED"; fi
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -d text="Deploy ${STATUS} — classapp
+          if [ "${{ job.status }}" = "success" ]; then 
+            STATUS="✅ SUCCESS"
+          else 
+            STATUS="❌ FAILED"
+          fi
+          
+          # Формируем текст сообщения в одну экранированную переменную, чтобы curl не падал
+          TEXT=$(cat << EOF
+          Deploy ${STATUS} — classapp
           Host: ${{ secrets.SSH_HOST }}
-          Commit: ${{ github.event.workflow_run.head_sha }}"
+          Commit: ${{ github.event.workflow_run.head_sha }}
+          EOF
+          )
+          
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            --data-urlencode "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+            --data-urlencode "text=${TEXT}"
