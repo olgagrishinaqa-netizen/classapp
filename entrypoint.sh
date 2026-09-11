@@ -17,6 +17,10 @@ if not url:
     print('DATABASE_URL not set', file=sys.stderr)
     sys.exit(2)
 
+# psycopg2 does not understand SQLAlchemy's driver-qualified URL scheme.
+if url.startswith('postgresql+psycopg2://'):
+    url = 'postgresql://' + url.removeprefix('postgresql+psycopg2://')
+
 attempts = 0
 max_attempts = int(os.environ.get('DB_WAIT_ATTEMPTS', '30'))
 wait = float(os.environ.get('DB_WAIT_INTERVAL', '2'))
