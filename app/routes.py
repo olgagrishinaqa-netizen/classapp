@@ -123,15 +123,20 @@ def users():
 def create_user():
     data = request.form if request.form else (request.get_json(silent=True) or {})
     required = ["full_name", "phone", "role", "password"]
-    if any(not str(data.get(field, "")).strip() for field in required):
+    cleaned = {field: str(data.get(field, "") or "").strip() for field in required}
+    if any(not value for value in cleaned.values()):
         return jsonify(error="Заполните все обязательные поля"), 400
-    if data["role"] not in {"parent", "student"}:
+
+    role_aliases = {"parent": "parent", "родитель": "parent", "student": "student", "ученик": "student"}
+    role = role_aliases.get(cleaned["role"].lower(), cleaned["role"]) if cleaned["role"] else ""
+    if role not in {"parent", "student"}:
         return jsonify(error="Роль должна быть Родитель или Ученик"), 400
-    normalized_phone = User.normalize_phone(data["phone"])
+
+    normalized_phone = User.normalize_phone(cleaned["phone"])
     if not normalized_phone:
         return jsonify(error="Введите корректный номер телефона"), 400
-    user = User(full_name=data["full_name"].strip(), phone=normalized_phone, role=data["role"])
-    user.set_password(data["password"])
+    user = User(full_name=cleaned["full_name"], phone=normalized_phone, role=role)
+    user.set_password(cleaned["password"])
     db.session.add(user)
     try:
         db.session.commit()

@@ -98,6 +98,26 @@ $('#role-switch').addEventListener('change', async event => { try { const data =
 $('#new-task').addEventListener('click', () => $('#task-form').classList.remove('hidden')); $('#cancel-task').addEventListener('click', () => $('#task-form').classList.add('hidden')); $('#save-task').addEventListener('click', async () => { try { await api('/api/tasks', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title:$('#task-title').value, description:$('#task-description').value})}); $('#task-title').value=''; $('#task-description').value=''; $('#task-form').classList.add('hidden'); toast('Задача создана'); loadTasks(); } catch(error) { toast(error.message); } });
 $('#new-news').addEventListener('click', () => { $('#news-edit-id').value=''; $('#news-title').value=''; $('#news-description').value=''; $('#news-status').value='draft'; $('#news-image').value=''; $('#news-form').classList.remove('hidden'); }); $('#cancel-news').addEventListener('click', () => $('#news-form').classList.add('hidden')); $('#save-news').addEventListener('click', async () => { const id = $('#news-edit-id').value; const data = new FormData(); data.append('title', $('#news-title').value); data.append('description', $('#news-description').value); data.append('status', $('#news-status').value); if ($('#news-image').files[0]) data.append('image', $('#news-image').files[0]); try { await api(id ? `/api/news/${id}` : '/api/news', {method:id ? 'PATCH' : 'POST', body:data}); $('#news-form').classList.add('hidden'); $('#news-title').value=''; $('#news-description').value=''; $('#news-status').value='draft'; $('#news-image').value=''; $('#news-edit-id').value=''; toast(id ? 'Новость обновлена' : 'Новость создана'); loadNews(); } catch(error) { toast(error.message); } });
 $('#news-filter').addEventListener('change', loadNews);
-$('#new-user').addEventListener('click', () => $('#user-form').classList.toggle('hidden')); $('#save-user').addEventListener('click', async () => { const fields = {full_name:$('#user-full-name'), phone:$('#user-phone'), role:$('#user-role'), password:$('#user-password')}; const values = Object.fromEntries(Object.entries(fields).map(([name, field]) => [name, String(field?.value ?? '').trim()])); if (Object.values(values).some(value => !value)) { toast('Заполните все обязательные поля'); return; } const data = new FormData(); Object.entries(values).forEach(([name, value]) => data.append(name, value)); try { await api('/api/users', {method:'POST', body:data}); $('#user-form').classList.add('hidden'); Object.values(fields).forEach(field => { field.value = ''; }); toast('Пользователь добавлен'); loadUsers(); } catch(error) { toast(error.message); } });
+$('#new-user').addEventListener('click', () => $('#user-form').classList.toggle('hidden'));
+$('#save-user').addEventListener('click', async () => {
+  const form = $('#user-form');
+  const data = new FormData(form);
+  const values = Object.fromEntries([...data.entries()].map(([key, value]) => [key, String(value).trim()]));
+
+  if (!values.full_name || !values.phone || !values.role || !values.password) {
+    toast('Заполните все обязательные поля');
+    return;
+  }
+
+  try {
+    await api('/api/users', {method:'POST', body:data});
+    form.reset();
+    form.classList.add('hidden');
+    toast('Пользователь добавлен');
+    loadUsers();
+  } catch (error) {
+    toast(error.message);
+  }
+});
 $('#add-expense').addEventListener('click', expenseRow); expenseRow(); $('#save-report').addEventListener('click', async () => { const items = $$('.expense-row').map(row => ({title:row.querySelector('.expense-title').value, amount:row.querySelector('.expense-amount').value})).filter(item => item.title || item.amount); const data = new FormData(); data.append('income', $('#income').value || '0'); data.append('items', JSON.stringify(items)); if ($('#receipt').files[0]) data.append('receipt', $('#receipt').files[0]); try { await api('/api/reports', {method:'POST', body:data}); toast('Отчет сохранен'); $('#income').value=''; $('#expense-items').innerHTML=''; expenseRow(); loadReports(); } catch(error) { toast(error.message); } });
 $('#date-label').textContent = new Date().toLocaleDateString('ru-RU', {weekday:'long', day:'numeric', month:'long'}).toUpperCase(); enter();

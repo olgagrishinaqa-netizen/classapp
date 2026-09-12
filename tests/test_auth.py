@@ -45,6 +45,28 @@ def test_admin_can_create_parent_from_user_form(client, db):
     assert User.query.filter_by(phone="79991234570").one().full_name == "Иван Иванов"
 
 
+def test_admin_can_create_parent_with_russian_role_name(client, db):
+    login = client.post(
+        "/api/login",
+        json={"phone": "79990000000", "password": "admin123"},
+    )
+    assert login.status_code == 200
+
+    response = client.post(
+        "/api/users",
+        data={
+            "full_name": "Елена Смирнова",
+            "phone": "+7 (999) 123-45-71",
+            "role": "Родитель",
+            "password": "secure-pass",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.get_json()["user"]["role"] == "parent"
+    assert User.query.filter_by(phone="79991234571").one().full_name == "Елена Смирнова"
+
+
 def test_login_rejects_invalid_password_hash_without_server_error(client, db):
     user = User(full_name="Поврежденный пользователь", phone="79991234568", role="parent", password_hash="legacy")
     db.session.add(user)
