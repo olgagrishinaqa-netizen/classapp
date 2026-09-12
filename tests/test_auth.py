@@ -23,6 +23,28 @@ def test_user_creation_normalizes_phone(db):
     assert User.query.filter_by(phone="79991234567").count() == 1
 
 
+def test_admin_can_create_parent_from_user_form(client, db):
+    login = client.post(
+        "/api/login",
+        json={"phone": "79990000000", "password": "admin123"},
+    )
+    assert login.status_code == 200
+
+    response = client.post(
+        "/api/users",
+        data={
+            "full_name": "Иван Иванов",
+            "phone": "+7 (999) 123-45-70",
+            "role": "parent",
+            "password": "secure-pass",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.get_json()["user"]["role"] == "parent"
+    assert User.query.filter_by(phone="79991234570").one().full_name == "Иван Иванов"
+
+
 def test_login_rejects_invalid_password_hash_without_server_error(client, db):
     user = User(full_name="Поврежденный пользователь", phone="79991234568", role="parent", password_hash="legacy")
     db.session.add(user)
