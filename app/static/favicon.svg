@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title>Класс</title>
+  <rect width="64" height="64" rx="16" fill="#315f4c"/>
+  <path d="M18 13h9v15.5L40.5 13h11L35.8 30.2 52 51H40.2L27 34.1V51h-9z" fill="#f6f8f5"/>
+  <circle cx="49" cy="14" r="6" fill="#eea566"/>
+</svg>
