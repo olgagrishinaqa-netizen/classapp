@@ -367,7 +367,7 @@ def expenses_page():
     payment_form = PaymentForm()
     parents = User.query.filter_by(role="parent").order_by(User.full_name).all()
     payment_form.user_id.choices = [(parent.id, parent.full_name) for parent in parents]
-    can_manage = user.is_admin and active_role == "admin"
+    can_manage = user.is_admin
 
     if request.method == "POST":
         if not can_manage:
@@ -412,8 +412,11 @@ def expenses_page():
         else:
             flash("Неизвестное действие.", "error")
 
-    total_deposited = sum(float(payment.amount) for payment in Payment.query.all())
-    total_expenses = sum(float(expense.amount) for expense in Expense.query.all())
+    total_deposited = db.session.query(
+        db.func.coalesce(db.func.sum(Payment.amount), 0)
+    ).scalar()
+    total_spent = db.session.query(db.func.coalesce(db.func.sum(Expense.amount), 0)).scalar()
+    current_balance = total_deposited - total_spent
     return render_template(
         "expenses.html",
         user=user,
@@ -426,9 +429,80 @@ def expenses_page():
         payments=Payment.query.order_by(Payment.created_at.desc()).all(),
         parents=parents,
         total_deposited=total_deposited,
-        total_expenses=total_expenses,
-        balance=total_deposited - total_expenses,
+        total_spent=total_spent,
+        total_expenses=total_spent,
+        current_balance=current_balance,
+        balance=current_balance,
     )
+
+
+@bp.route("/expenses/edit/<int:expense_id>", methods=["GET", "POST"])
+def edit_expense_page(expense_id):
+    user = current_user()
+    if not user:
+        return redirect(url_for("main.login_page"))
+    if not user.is_admin:
+        flash("Редактировать расходы может только администратор.", "error")
+        return redirect(url_for("main.expenses_page"))
+
+    expense = db.session.get(Expense, expense_id)
+    if not expense:
+        flash("Расход не найден.", "error")
+        return redirect(url_for("main.expenses_page"))
+
+    form = ExpenseForm(obj=expense)
+    if form.validate_on_submit():
+        receipt = form.receipt.data
+        if receipt:
+            original_name = secure_filename(receipt.filename)
+            if not original_name:
+                form.receipt.errors.append("Укажите файл с допустимым именем.")
+            else:
+                receipt_filename = f"{uuid4().hex}_{original_name}"
+                receipt_dir = os.path.join(current_app.root_path, "static", "uploads", "receipts")
+                os.makedirs(receipt_dir, exist_ok=True)
+                receipt.save(os.path.join(receipt_dir, receipt_filename))
+                expense.receipt_path = receipt_filename
+        if not form.receipt.errors:
+            expense.title = form.title.data.strip()
+            expense.amount = form.amount.data
+            expense.category = (form.category.data or "Общие").strip()
+            db.session.commit()
+            flash("Расход обновлен.", "success")
+            return redirect(url_for("main.expenses_page"))
+
+    return render_template("expense_edit.html", user=user, current_user=user, form=form, expense=expense)
+
+
+@bp.route("/payments/edit/<int:payment_id>", methods=["GET", "POST"])
+def edit_payment_page(payment_id):
+    user = current_user()
+    if not user:
+        return redirect(url_for("main.login_page"))
+    if not user.is_admin:
+        flash("Редактировать взносы может только администратор.", "error")
+        return redirect(url_for("main.expenses_page"))
+
+    payment = db.session.get(Payment, payment_id)
+    if not payment:
+        flash("Взнос не найден.", "error")
+        return redirect(url_for("main.expenses_page"))
+
+    parents = User.query.filter_by(role="parent").order_by(User.full_name).all()
+    form = PaymentForm(obj=payment)
+    form.user_id.choices = [(parent.id, parent.full_name) for parent in parents]
+    if form.validate_on_submit():
+        payer = db.session.get(User, form.user_id.data)
+        if not payer or payer.role != "parent":
+            form.user_id.errors.append("Выберите зарегистрированного родителя.")
+        else:
+            payment.user_id = payer.id
+            payment.amount = form.amount.data
+            db.session.commit()
+            flash("Взнос обновлен.", "success")
+            return redirect(url_for("main.expenses_page"))
+
+    return render_template("payment_edit.html", user=user, current_user=user, form=form, payment=payment)
 
 
 @bp.post("/api/login")
