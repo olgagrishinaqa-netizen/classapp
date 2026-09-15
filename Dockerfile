@@ -8,6 +8,7 @@ WORKDIR /app
 
 # Сразу настраиваем права на рабочую директорию для нашего пользователя
 RUN chown appuser:appuser /app
+RUN mkdir -p /var/log/classapp && chown -R appuser:appuser /var/log/classapp
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
