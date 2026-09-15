@@ -1,5 +1,5 @@
 from app import create_app
-from app.models import ExpenseReport, News, Task, User
+from app.models import Expense, ExpenseReport, News, Payment, Task, User
 
 
 def test_login_accepts_common_phone_formats(client):
@@ -38,14 +38,43 @@ def test_mobile_pages_render_and_use_server_forms(client, db):
     assert client.get("/tasks").status_code == 200
     assert client.get("/expenses").status_code == 200
 
-    reports_before = ExpenseReport.query.count()
+    expenses_before = Expense.query.count()
     create_expense = client.post(
         "/expenses",
-        data={"title": "Маркер", "amount": "125.50", "category": "Канцтовары"},
+        data={"action": "add_expense", "title": "Маркер", "amount": "125.50", "category": "Канцтовары"},
         follow_redirects=False,
     )
     assert create_expense.status_code == 302
-    assert ExpenseReport.query.count() == reports_before + 1
+    assert Expense.query.count() == expenses_before + 1
+
+
+def test_admin_can_record_payment_and_expense(client, db):
+    client.post("/login", data={"username": "79990000000", "password": "admin123"})
+    parent = User(full_name="Плательщик", phone="79991234562", role="parent")
+    parent.set_password("secure-pass")
+    db.session.add(parent)
+    db.session.commit()
+
+    payment = client.post(
+        "/expenses",
+        data={"action": "add_payment", "user_id": parent.id, "amount": "1000.00"},
+        follow_redirects=False,
+    )
+    expense = client.post(
+        "/expenses",
+        data={"action": "add_expense", "title": "Тетради", "amount": "350.00", "category": "Учеба"},
+        follow_redirects=False,
+    )
+
+    assert payment.status_code == 302
+    assert expense.status_code == 302
+    assert float(Payment.query.filter_by(user_id=parent.id).one().amount) == 1000
+    assert float(Expense.query.filter_by(title="Тетради").one().amount) == 350
+    page = client.get("/expenses")
+    expected_balance = sum(float(item.amount) for item in Payment.query.all()) - sum(
+        float(item.amount) for item in Expense.query.all()
+    )
+    assert f"{expected_balance:,.2f}".replace(",", " ").encode() in page.data
 
 
 def test_dashboard_news_users_and_profile_role_mode(client, db):

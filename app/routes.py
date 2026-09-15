@@ -20,8 +20,8 @@ from sqlalchemy.exc import IntegrityError
 from werkzeug.utils import secure_filename
 
 from .extensions import db
-from .forms import ExpenseForm, LoginForm, NewsForm, RegisterForm, RoleForm, UserRoleForm
-from .models import ExpenseReport, News, Task, User
+from .forms import ExpenseForm, LoginForm, NewsForm, PaymentForm, RegisterForm, RoleForm, UserRoleForm
+from .models import Expense, ExpenseReport, News, Payment, Task, User
 
 bp = Blueprint("main", __name__)
 
@@ -156,8 +156,7 @@ def dashboard_page():
         tzinfo=None, day=1, hour=0, minute=0, second=0, microsecond=0
     )
     monthly_expenses = sum(
-        report.total_expenses
-        for report in ExpenseReport.query.filter(ExpenseReport.created_at >= month_start).all()
+        float(expense.amount) for expense in Expense.query.filter(Expense.created_at >= month_start).all()
     )
     return render_template(
         "dashboard.html",
@@ -360,51 +359,75 @@ def complete_task_page(task_id):
 
 @bp.route("/expenses", methods=["GET", "POST"])
 def expenses_page():
-    user = current_user()
+    user, active_role = page_user()
     if not user:
         return redirect(url_for("main.login_page"))
 
-    form = ExpenseForm()
-    if form.validate_on_submit():
-        if not user.is_admin:
-            flash("Добавлять расходы может только администратор.", "error")
-        else:
-            db.session.add(
-                ExpenseReport(
-                    income=0,
-                    expense_items=[
-                        {
-                            "title": form.title.data.strip(),
-                            "amount": float(form.amount.data),
-                            "category": (form.category.data or "Расходы класса").strip(),
-                        }
-                    ],
-                )
-            )
-            db.session.commit()
-            flash("Расход добавлен.", "success")
-            return redirect(url_for("main.expenses_page"))
+    expense_form = ExpenseForm()
+    payment_form = PaymentForm()
+    parents = User.query.filter_by(role="parent").order_by(User.full_name).all()
+    payment_form.user_id.choices = [(parent.id, parent.full_name) for parent in parents]
+    can_manage = user.is_admin and active_role == "admin"
 
-    reports = ExpenseReport.query.order_by(ExpenseReport.created_at.desc()).all()
-    expenses = [
-        {
-            "title": item.get("title", "Без названия"),
-            "amount": float(item.get("amount", 0)),
-            "category": item.get("category", "Расходы класса"),
-            "created_at": report.created_at,
-        }
-        for report in reports
-        for item in (report.expense_items or [])
-    ]
-    total_income = sum(float(report.income) for report in reports)
-    total_expenses = sum(expense["amount"] for expense in expenses)
+    if request.method == "POST":
+        if not can_manage:
+            flash("Добавлять взносы и расходы может только администратор.", "error")
+        elif request.form.get("action") == "add_payment":
+            if payment_form.validate_on_submit():
+                payer = db.session.get(User, payment_form.user_id.data)
+                if not payer or payer.role != "parent":
+                    flash("Выберите зарегистрированного родителя.", "error")
+                else:
+                    db.session.add(Payment(user_id=payer.id, amount=payment_form.amount.data))
+                    db.session.commit()
+                    flash("Взнос успешно зафиксирован.", "success")
+                    return redirect(url_for("main.expenses_page"))
+        elif request.form.get("action") == "add_expense":
+            if expense_form.validate_on_submit():
+                receipt_filename = None
+                receipt = expense_form.receipt.data
+                if receipt:
+                    original_name = secure_filename(receipt.filename)
+                    if not original_name:
+                        expense_form.receipt.errors.append("Укажите файл с допустимым именем.")
+                    else:
+                        receipt_filename = f"{uuid4().hex}_{original_name}"
+                        receipt_dir = os.path.join(
+                            current_app.root_path, "static", "uploads", "receipts"
+                        )
+                        os.makedirs(receipt_dir, exist_ok=True)
+                        receipt.save(os.path.join(receipt_dir, receipt_filename))
+                if not expense_form.receipt.errors:
+                    db.session.add(
+                        Expense(
+                            title=expense_form.title.data.strip(),
+                            amount=expense_form.amount.data,
+                            category=(expense_form.category.data or "Общие").strip(),
+                            receipt_path=receipt_filename,
+                        )
+                    )
+                    db.session.commit()
+                    flash("Расход успешно добавлен.", "success")
+                    return redirect(url_for("main.expenses_page"))
+        else:
+            flash("Неизвестное действие.", "error")
+
+    total_deposited = sum(float(payment.amount) for payment in Payment.query.all())
+    total_expenses = sum(float(expense.amount) for expense in Expense.query.all())
     return render_template(
         "expenses.html",
         user=user,
-        form=form,
-        expenses=expenses,
+        current_user=user,
+        active_role=active_role,
+        can_manage=can_manage,
+        expense_form=expense_form,
+        payment_form=payment_form,
+        expenses=Expense.query.order_by(Expense.created_at.desc()).all(),
+        payments=Payment.query.order_by(Payment.created_at.desc()).all(),
+        parents=parents,
+        total_deposited=total_deposited,
         total_expenses=total_expenses,
-        balance=total_income - total_expenses,
+        balance=total_deposited - total_expenses,
     )
 
 

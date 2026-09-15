@@ -1,11 +1,15 @@
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 from flask_login import UserMixin
 from sqlalchemy.orm import validates
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from .extensions import db
+
+
+def utc_now():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class User(UserMixin, db.Model):
@@ -61,6 +65,34 @@ class ExpenseReport(db.Model):
     @property
     def balance(self):
         return float(self.income) - self.total_expenses
+
+
+class Payment(db.Model):
+    __tablename__ = "payment"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    amount = db.Column(db.Numeric(10, 2), nullable=False)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+
+    user = db.relationship("User", backref=db.backref("payments", lazy=True))
+
+
+class Expense(db.Model):
+    __tablename__ = "expense"
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(180), nullable=False)
+    amount = db.Column(db.Numeric(10, 2), nullable=False)
+    category = db.Column(db.String(64), nullable=False, default="Общие")
+    receipt_path = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+
+    @property
+    def receipt_url(self):
+        if not self.receipt_path:
+            return None
+        return f"/static/uploads/receipts/{self.receipt_path}"
 
 
 class Task(db.Model):
