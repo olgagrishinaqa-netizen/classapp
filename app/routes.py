@@ -16,11 +16,21 @@ from flask import (
     session,
     url_for,
 )
+from sqlalchemy import case
 from sqlalchemy.exc import IntegrityError
 from werkzeug.utils import secure_filename
 
 from .extensions import db
-from .forms import ExpenseForm, LoginForm, NewsForm, PaymentForm, RegisterForm, RoleForm, UserRoleForm
+from .forms import (
+    ExpenseForm,
+    LoginForm,
+    NewsForm,
+    PaymentForm,
+    RegisterForm,
+    RoleForm,
+    UserManagementForm,
+    UserRoleForm,
+)
 from .models import Expense, ExpenseReport, News, Payment, Task, User
 
 bp = Blueprint("main", __name__)
@@ -96,6 +106,8 @@ def login_page():
         phone = User.normalize_phone(form.username.data)
         user = User.query.filter_by(phone=phone).first()
         if user and user.check_password(form.password.data):
+            user.last_login = datetime.now(timezone.utc).replace(tzinfo=None)
+            db.session.commit()
             session["user_id"] = user.id
             session["active_role"] = "admin" if user.is_admin else user.role
             return redirect(url_for("main.dashboard_page"))
@@ -254,7 +266,7 @@ def edit_news_page(news_id):
     )
 
 
-@bp.get("/users")
+@bp.route("/users", methods=["GET", "POST"])
 def users_page():
     user, active_role = page_user()
     if not user:
@@ -262,14 +274,118 @@ def users_page():
     if not user.is_admin or active_role != "admin":
         flash("Доступ к пользователям разрешен только администратору.", "error")
         return redirect(url_for("main.dashboard_page"))
+
+    form = UserManagementForm()
+    if request.method == "POST":
+        if request.form.get("action") != "create_user":
+            flash("Неизвестное действие.", "error")
+        elif not form.validate_on_submit():
+            flash("Проверьте заполнение обязательных полей.", "error")
+        else:
+            phone = User.normalize_phone(form.phone.data)
+            if not phone.startswith("375") or len(phone) != 12:
+                form.phone.errors.append("Введите номер в формате +375 (XX) XXX-XX-XX.")
+            elif User.query.filter_by(phone=phone).first():
+                form.phone.errors.append("Этот номер телефона уже зарегистрирован.")
+            else:
+                full_name = " ".join(
+                    part.strip()
+                    for part in (form.last_name.data, form.first_name.data, form.middle_name.data or "")
+                    if part.strip()
+                )
+                new_user = User(full_name=full_name, phone=phone, role=form.role.data)
+                if form.password.data:
+                    new_user.set_password(form.password.data)
+                else:
+                    form.password.errors.append("Укажите пароль не короче 6 символов.")
+                if not form.password.errors:
+                    db.session.add(new_user)
+                    db.session.commit()
+                    flash("Пользователь создан.", "success")
+                    return redirect(url_for("main.users_page"))
+
+    selected_role = request.args.get("role_filter")
+    query = User.query
+    if selected_role in {"parent", "student"}:
+        query = query.filter_by(role=selected_role)
+    role_order = case((User.role == "admin", 0), else_=1)
+    users_list = query.order_by(role_order, User.full_name.asc()).all()
     return render_template(
         "users.html",
         user=user,
         current_user=user,
         active_role=active_role,
-        users=User.query.order_by(User.created_at.desc()).all(),
+        users=users_list,
+        selected_role=selected_role,
+        form=form,
         role_form=UserRoleForm(),
     )
+
+
+@bp.post("/users/edit/<int:user_id>")
+def edit_user_page(user_id):
+    user, active_role = page_user()
+    if not user:
+        return redirect(url_for("main.login_page"))
+    if not user.is_admin or active_role != "admin":
+        flash("Редактировать пользователей может только администратор.", "error")
+        return redirect(url_for("main.dashboard_page"))
+
+    target_user = db.session.get(User, user_id)
+    if not target_user:
+        flash("Пользователь не найден.", "error")
+        return redirect(url_for("main.users_page"))
+    form = UserManagementForm()
+    if not form.validate_on_submit():
+        flash("Проверьте заполнение обязательных полей.", "error")
+        return redirect(url_for("main.users_page"))
+
+    phone = User.normalize_phone(form.phone.data)
+    existing_user = User.query.filter_by(phone=phone).first()
+    if not phone.startswith("375") or len(phone) != 12:
+        flash("Введите номер в формате +375 (XX) XXX-XX-XX.", "error")
+    elif existing_user and existing_user.id != target_user.id:
+        flash("Этот номер телефона уже зарегистрирован.", "error")
+    elif target_user.is_admin and form.role.data != "admin" and User.query.filter_by(role="admin").count() == 1:
+        flash("Нельзя изменить роль последнего администратора.", "error")
+    else:
+        target_user.full_name = " ".join(
+            part.strip()
+            for part in (form.last_name.data, form.first_name.data, form.middle_name.data or "")
+            if part.strip()
+        )
+        target_user.phone = phone
+        target_user.role = form.role.data
+        if form.password.data:
+            target_user.set_password(form.password.data)
+        db.session.commit()
+        flash("Данные пользователя обновлены.", "success")
+    return redirect(url_for("main.users_page"))
+
+
+@bp.post("/users/delete/<int:user_id>")
+def delete_user_page(user_id):
+    user, active_role = page_user()
+    if not user:
+        return redirect(url_for("main.login_page"))
+    if not user.is_admin or active_role != "admin":
+        flash("Удалять пользователей может только администратор.", "error")
+        return redirect(url_for("main.dashboard_page"))
+
+    target_user = db.session.get(User, user_id)
+    if not target_user:
+        flash("Пользователь не найден.", "error")
+    elif target_user.id == user.id:
+        flash("Нельзя удалить собственный аккаунт.", "error")
+    elif target_user.is_admin and User.query.filter_by(role="admin").count() == 1:
+        flash("Нельзя удалить последнего администратора.", "error")
+    elif target_user.payments:
+        flash("Нельзя удалить пользователя с историей взносов.", "error")
+    else:
+        db.session.delete(target_user)
+        db.session.commit()
+        flash("Пользователь удален.", "success")
+    return redirect(url_for("main.users_page"))
 
 
 @bp.post("/users/<int:user_id>/role")
@@ -514,6 +630,8 @@ def login():
     user = User.query.filter_by(phone=phone).first()
     if not user or not user.check_password(data.get("password") or ""):
         return jsonify(error="Неверный телефон или пароль"), 401
+    user.last_login = datetime.now(timezone.utc).replace(tzinfo=None)
+    db.session.commit()
     session["user_id"] = user.id
     session["active_role"] = "admin" if user.is_admin else user.role
     return jsonify(user=user_json(user), active_role=session["active_role"])
