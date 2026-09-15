@@ -20,12 +20,12 @@ services:
       options:
         max-size: "50m"
         max-file: "5"
+    networks:
+      - app-network
 
   web:
     image: ghcr.io/${REPO_OWNER}/classapp:${IMAGE_TAG}
     restart: unless-stopped
-    ports:
-      - "80:8000"
     command: gunicorn -w 2 -b 0.0.0.0:8000 "app:create_app()"
     env_file:
       - .env
@@ -36,19 +36,50 @@ services:
       POSTGRES_HOST: db
       DATABASE_URL: postgresql://postgres:${DB_PASSWORD:?DB_PASSWORD is required}@db:5432/classapp
       PYTHONPATH: /app
+      APP_JSON_LOG_PATH: /var/log/classapp/app.json.log
+    volumes:
+      - /var/log/classapp:/var/log/classapp
+    expose:
+      - "8000"
+    depends_on:
+      db:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
       interval: 15s
       timeout: 5s
       retries: 5
-    depends_on:
-      db:
-        condition: service_healthy
     logging:
       driver: json-file
       options:
         max-size: "50m"
         max-file: "10"
+    networks:
+      - app-network
+
+  nginx:
+    image: nginx:1.25-alpine
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - /var/log/nginx:/var/log/nginx
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    networks:
+      - app-network
 
   prometheus:
     image: ${PROMETHEUS_IMAGE:-prom/prometheus:latest}
@@ -59,41 +90,25 @@ services:
     ports:
       - "9090:9090"
     depends_on:
-      - web
+      web:
+        condition: service_healthy
     logging:
       driver: json-file
       options:
         max-size: "50m"
         max-file: "3"
     healthcheck:
-      test: ["CMD-SHELL","/bin/sh -c 'wget -qO- http://localhost:9090/-/healthy || exit 1'"]
+      test: ["CMD-SHELL", "/bin/sh -c 'wget -qO- http://localhost:9090/-/healthy || exit 1'"]
       interval: 30s
       timeout: 5s
       retries: 3
+    networks:
+      - app-network
 
-  grafana:
-    image: ${GRAFANA_IMAGE:-grafana/grafana:latest}
-    restart: unless-stopped
-    environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
-    volumes:
-      - grafana_data:/var/lib/grafana
-    ports:
-      - "3000:3000"
-    depends_on:
-      - prometheus
-    logging:
-      driver: json-file
-      options:
-        max-size: "50m"
-        max-file: "3"
-    healthcheck:
-      test: ["CMD-SHELL","/bin/sh -c 'wget -qO- http://localhost:3000/api/health || exit 1'"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
+networks:
+  app-network:
+    driver: bridge
 
 volumes:
   classapp_prod_db_data:
   prometheus_data:
-  grafana_data:
