@@ -18,6 +18,7 @@ class TestConfig:
         "sqlite:///test_classapp.db",
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    APP_JSON_LOG_PATH = "/tmp/classapp-test/app.json.log"
 
 
 @pytest.fixture(scope="session")

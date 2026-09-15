@@ -14,29 +14,33 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ШАГ 1: Сначала готовим сервер и права через SSH, а не наоборот
-      - name: Prepare Server Directories
+      - name: Prepare server directories and log folders
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ubuntu
           key: ${{ secrets.SSH_KEY }}
           script: |
+            set -e
             sudo mkdir -p /opt/classapp
+            sudo mkdir -p /opt/classapp/monitoring
+            sudo mkdir -p /opt/classapp/provisioning/datasources
+            sudo mkdir -p /opt/classapp/provisioning/dashboards
+            sudo mkdir -p /opt/classapp/provisioning/dashboards_json
+            sudo mkdir -p /var/log/classapp /var/log/nginx
             sudo chown -R ubuntu:ubuntu /opt/classapp
+            sudo chmod -R 777 /var/log/classapp /var/log/nginx
 
-      # ШАГ 2: Теперь безопасно копируем файлы, так как права уже есть
-      - name: Copy compose & monitoring config to server
+      - name: Copy compose, proxy and observability config to server
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ubuntu
           key: ${{ secrets.SSH_KEY }}
-          source: "docker-compose.prod.yml,monitoring/prometheus.yml"
+          source: "docker-compose.prod.yml,docker-compose.logging.yml,nginx.conf,promtail-config.yml,monitoring/prometheus.yml,provisioning/datasources/loki.yml,provisioning/dashboards/dashboards.yml,provisioning/dashboards_json/classapp_dashboard.json"
           target: "/opt/classapp"
 
-      # ШАГ 3: Деплой с гарантированным ожиданием готовности базы данных
-      - name: SSH Remote Deploy
+      - name: Deploy production web and logging stacks
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -45,17 +49,15 @@ jobs:
           envs: APP_SECRET_KEY,APP_DB_PASSWORD,GRAFANA_ADMIN_PASSWORD
           script: |
             set -e
-            
-            # Валидация секретов перед запуском
+
             if [ -z "$APP_SECRET_KEY" ] || [ -z "$APP_DB_PASSWORD" ]; then
-              echo "❌ Ошибка: Критические секреты сборки не заданы!"
+              echo "❌ Missing required deploy secrets"
               exit 1
             fi
-            
+
             cd /opt/classapp
             REPO_OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-            
-            # Безопасная запись конфига .env
+
             cat << ENV > .env
             REPO_OWNER=${REPO_OWNER_LOWER}
             IMAGE_TAG=main-${{ github.event.workflow_run.head_sha }}
@@ -64,19 +66,24 @@ jobs:
             GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
             ENV
             chmod 600 .env
-            
-            echo "Pulling new images..."
+
+            echo "Pulling production images..."
             docker compose -f docker-compose.prod.yml pull
-            
+            echo "Pulling logging images..."
+            docker compose -f docker-compose.logging.yml pull
+
             echo "Starting PostgreSQL..."
             docker compose -f docker-compose.prod.yml up -d db
-            
-            # Синьорский подход вместо sleep 20: ждем, пока БД реально начнет принимать соединения
+
             echo "Waiting for PostgreSQL database to be ready..."
             for i in {1..30}; do
-              if docker compose -f docker-compose.prod.yml exec -T db pg_isready -U postgres; then
+              if docker compose -f docker-compose.prod.yml exec -T db pg_isready -U postgres -d classapp; then
                 echo "Database is ready!"
                 break
+              fi
+              if [ "$i" -eq 30 ]; then
+                echo "❌ Database did not become ready in time"
+                exit 1
               fi
               echo "Waiting... ($i/30)"
               sleep 2
@@ -85,33 +92,37 @@ jobs:
             echo "Running database migrations..."
             docker compose -f docker-compose.prod.yml run --rm -T -e PYTHONPATH=/app web alembic upgrade head
 
-            echo "Starting application and monitoring containers..."
-            docker compose -f docker-compose.prod.yml up -d web prometheus grafana
-            
-            echo "🚀 Деплой успешно завершён!"
+            echo "Starting production web stack..."
+            docker compose -f docker-compose.prod.yml up -d web nginx prometheus
+
+            echo "Starting logging stack..."
+            docker compose -f docker-compose.logging.yml up -d
+
+            echo "Pruning unused images..."
+            docker image prune -f
+
+            echo "🚀 Dual-compose deploy completed successfully!"
         env:
           APP_SECRET_KEY: ${{ secrets.APP_SECRET_KEY }}
           APP_DB_PASSWORD: ${{ secrets.APP_DB_PASSWORD }}
           GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
 
-      # ШАГ 4: Надежные и стабильные уведомления в Telegram (с экранированием строк)
       - name: Notify deploy result
         if: always()
         run: |
-          if [ "${{ job.status }}" = "success" ]; then 
+          if [ "${{ job.status }}" = "success" ]; then
             STATUS="✅ SUCCESS"
-          else 
+          else
             STATUS="❌ FAILED"
           fi
-          
-          # Формируем текст сообщения в одну экранированную переменную, чтобы curl не падал
+
           TEXT=$(cat << EOF
           Deploy ${STATUS} — classapp
           Host: ${{ secrets.SSH_HOST }}
           Commit: ${{ github.event.workflow_run.head_sha }}
           EOF
           )
-          
+
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
             --data-urlencode "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
             --data-urlencode "text=${TEXT}"
