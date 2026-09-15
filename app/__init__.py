@@ -34,7 +34,9 @@ def create_app(config_object=None):
     db.init_app(app)
 
     with app.app_context():
-        db.create_all()
+        # In production schema changes are applied exclusively by Alembic before web starts.
+        if app.config.get("AUTO_CREATE_SCHEMA", app.testing or app.debug):
+            db.create_all()
         admin_phone = User.normalize_phone(app.config.get("ADMIN_PHONE", "79990000000"))
         admin_name = app.config.get("ADMIN_NAME", "Администратор")
         admin_password = app.config.get("ADMIN_PASSWORD", "admin123")
