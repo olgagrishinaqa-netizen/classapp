@@ -7,6 +7,7 @@ from alembic import context
 
 # импорт metadata из вашего приложения
 from app.extensions import db
+import app.models  # noqa: F401 -- register every model with SQLAlchemy metadata
 
 config = context.config
 

@@ -68,8 +68,8 @@ jobs:
             echo "Pulling new images..."
             docker compose -f docker-compose.prod.yml pull
             
-            echo "Starting containers..."
-            docker compose -f docker-compose.prod.yml up -d
+            echo "Starting PostgreSQL..."
+            docker compose -f docker-compose.prod.yml up -d db
             
             # Синьорский подход вместо sleep 20: ждем, пока БД реально начнет принимать соединения
             echo "Waiting for PostgreSQL database to be ready..."
@@ -83,7 +83,10 @@ jobs:
             done
 
             echo "Running database migrations..."
-            docker compose -f docker-compose.prod.yml exec -T -e PYTHONPATH=/app web alembic upgrade head
+            docker compose -f docker-compose.prod.yml run --rm -T -e PYTHONPATH=/app web alembic upgrade head
+
+            echo "Starting application and monitoring containers..."
+            docker compose -f docker-compose.prod.yml up -d web prometheus grafana
             
             echo "🚀 Деплой успешно завершён!"
         env:
