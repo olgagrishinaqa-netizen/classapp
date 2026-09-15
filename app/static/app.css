@@ -308,7 +308,8 @@ nav button:hover {
 }
 
 .main {
-  width: calc(100% - 245px);
+  flex: 1 1 auto;
+  min-width: 0;
   max-width: 1400px;
   padding: 42px 58px;
 }
@@ -830,7 +831,6 @@ nav button:hover {
   }
 
   .main {
-    width: calc(100% - 70px);
     padding: 24px 17px;
   }
 
@@ -888,7 +888,6 @@ nav button:hover {
   }
 
   .main {
-    width: 100%;
     padding: 20px 14px;
   }
 
