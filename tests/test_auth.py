@@ -74,7 +74,45 @@ def test_admin_can_record_payment_and_expense(client, db):
     expected_balance = sum(float(item.amount) for item in Payment.query.all()) - sum(
         float(item.amount) for item in Expense.query.all()
     )
-    assert f"{expected_balance:,.2f}".replace(",", " ").encode() in page.data
+    assert f"{expected_balance:.2f}".encode() in page.data
+
+
+def test_finance_records_can_be_edited_only_by_an_administrator(client, db):
+    client.post("/login", data={"username": "79990000000", "password": "admin123"})
+    parent = User(full_name="Родитель взноса", phone="79991234563", role="parent")
+    parent.set_password("secure-pass")
+    payment = Payment(user=parent, amount=100)
+    expense = Expense(title="Старое название", amount=30, category="Общие")
+    db.session.add_all([parent, payment, expense])
+    db.session.commit()
+
+    edit_payment = client.post(
+        f"/payments/edit/{payment.id}",
+        data={"user_id": parent.id, "amount": "150.00"},
+        follow_redirects=False,
+    )
+    edit_expense = client.post(
+        f"/expenses/edit/{expense.id}",
+        data={"title": "Новое название", "amount": "45.00", "category": "Учеба"},
+        follow_redirects=False,
+    )
+    assert edit_payment.status_code == 302
+    assert edit_expense.status_code == 302
+    assert float(db.session.get(Payment, payment.id).amount) == 150
+    assert db.session.get(Expense, expense.id).title == "Новое название"
+
+    client.post("/logout")
+    client.post("/login", data={"username": parent.phone, "password": "secure-pass"})
+    forbidden_edit = client.post(
+        f"/expenses/edit/{expense.id}",
+        data={"title": "Недопустимое изменение", "amount": "1.00", "category": "Общие"},
+        follow_redirects=False,
+    )
+    assert forbidden_edit.status_code == 302
+    assert db.session.get(Expense, expense.id).title == "Новое название"
+    read_only_page = client.get("/expenses")
+    assert b"+ \xd0\x92\xd0\xb7\xd0\xbd\xd0\xbe\xd1\x81" not in read_only_page.data
+    assert b"add_expense" not in read_only_page.data
 
 
 def test_dashboard_news_users_and_profile_role_mode(client, db):

@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Редактирование расхода | Класс{% endblock %}
+{% block content %}
+<header class="mb-6"><a href="{{ url_for('main.expenses_page') }}" class="text-sm font-semibold text-emerald-700 dark:text-emerald-300">← К расходам</a><h1 class="mt-4 text-3xl font-bold tracking-tight">Редактировать расход</h1></header>
+<form method="post" enctype="multipart/form-data" class="rounded-3xl bg-white p-5 shadow-sm dark:bg-slate-900" novalidate>
+  {{ form.hidden_tag() }}
+  {% for field in [form.title, form.amount, form.category, form.receipt] %}<div class="mb-4">{{ field.label(class="mb-2 block text-sm font-semibold") }}{{ field(class="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-base outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-800", inputmode="decimal" if field.name == "amount" else none, accept=".jpg,.jpeg,.png,.webp,.pdf" if field.name == "receipt" else none) }}{% for error in field.errors %}<p class="mt-2 text-sm text-red-600">{{ error }}</p>{% endfor %}</div>{% endfor %}
+  {% if expense.receipt_path %}<a href="{{ expense.receipt_url }}" target="_blank" rel="noopener" class="mb-4 inline-flex min-h-12 items-center rounded-xl bg-emerald-50 px-4 text-sm font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">Открыть текущий чек</a>{% endif %}
+  <button class="min-h-12 w-full rounded-xl bg-emerald-700 text-base font-bold text-white">Сохранить расход</button>
+</form>
+{% endblock %}
