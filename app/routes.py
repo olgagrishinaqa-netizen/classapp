@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from functools import wraps
 from uuid import uuid4
 
@@ -31,7 +31,7 @@ from .forms import (
     UserManagementForm,
     UserRoleForm,
 )
-from .models import Expense, ExpenseReport, News, Payment, Task, User
+from .models import Expense, ExpenseReport, News, Payment, Task, User, local_now
 
 bp = Blueprint("main", __name__)
 
@@ -106,7 +106,7 @@ def login_page():
         phone = User.normalize_phone(form.username.data)
         user = User.query.filter_by(phone=phone).first()
         if user and user.check_password(form.password.data):
-            user.last_login = datetime.now(timezone.utc).replace(tzinfo=None)
+            user.last_login = local_now()
             db.session.commit()
             session["user_id"] = user.id
             session["active_role"] = "admin" if user.is_admin else user.role
@@ -164,9 +164,7 @@ def dashboard_page():
 
     active_task_count = Task.query.filter(Task.status != "done").count()
     latest_news = News.query.filter_by(status="published").order_by(News.created_at.desc()).first()
-    month_start = datetime.now(timezone.utc).replace(
-        tzinfo=None, day=1, hour=0, minute=0, second=0, microsecond=0
-    )
+    month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     monthly_expenses = sum(
         float(expense.amount) for expense in Expense.query.filter(Expense.created_at >= month_start).all()
     )
@@ -630,7 +628,7 @@ def login():
     user = User.query.filter_by(phone=phone).first()
     if not user or not user.check_password(data.get("password") or ""):
         return jsonify(error="Неверный телефон или пароль"), 401
-    user.last_login = datetime.now(timezone.utc).replace(tzinfo=None)
+    user.last_login = local_now()
     db.session.commit()
     session["user_id"] = user.id
     session["active_role"] = "admin" if user.is_admin else user.role
