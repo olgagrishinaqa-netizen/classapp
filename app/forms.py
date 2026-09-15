@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from flask_wtf import FlaskForm
-from wtforms import DecimalField, PasswordField, StringField, SubmitField
+from wtforms import DecimalField, PasswordField, SelectField, StringField, SubmitField, TextAreaField
 from wtforms.validators import DataRequired, EqualTo, Length, NumberRange
 
 
@@ -30,3 +30,32 @@ class ExpenseForm(FlaskForm):
     )
     category = StringField("Категория", validators=[Length(max=80)])
     submit = SubmitField("Добавить расход")
+
+
+class NewsForm(FlaskForm):
+    title = StringField("Заголовок", validators=[DataRequired(), Length(max=200)])
+    description = TextAreaField("Текст новости", validators=[DataRequired()])
+    status = SelectField(
+        "Статус",
+        choices=[("published", "Опубликовать"), ("draft", "Сохранить как черновик")],
+        validators=[DataRequired()],
+    )
+    submit = SubmitField("Опубликовать новость")
+
+
+class RoleForm(FlaskForm):
+    role = SelectField(
+        "Режим интерфейса",
+        choices=[("parent", "Родитель"), ("admin", "Администратор")],
+        validators=[DataRequired()],
+    )
+    submit = SubmitField("Сменить роль")
+
+
+class UserRoleForm(FlaskForm):
+    role = SelectField(
+        "Роль",
+        choices=[("parent", "Родитель"), ("student", "Ученик"), ("admin", "Администратор")],
+        validators=[DataRequired()],
+    )
+    submit = SubmitField("Сохранить")
