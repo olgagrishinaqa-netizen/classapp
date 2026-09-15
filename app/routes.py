@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import datetime, timezone
 from functools import wraps
 from uuid import uuid4
 
@@ -19,7 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from werkzeug.utils import secure_filename
 
 from .extensions import db
-from .forms import ExpenseForm, LoginForm, RegisterForm
+from .forms import ExpenseForm, LoginForm, NewsForm, RegisterForm, RoleForm, UserRoleForm
 from .models import ExpenseReport, News, Task, User
 
 bp = Blueprint("main", __name__)
@@ -82,7 +83,7 @@ def news_json(news):
 
 @bp.get("/")
 def index():
-    return redirect(url_for("main.tasks_page" if current_user() else "main.login_page"))
+    return redirect(url_for("main.dashboard_page" if current_user() else "main.login_page"))
 
 
 @bp.route("/login", methods=["GET", "POST"])
@@ -97,7 +98,7 @@ def login_page():
         if user and user.check_password(form.password.data):
             session["user_id"] = user.id
             session["active_role"] = "admin" if user.is_admin else user.role
-            return redirect(url_for("main.tasks_page"))
+            return redirect(url_for("main.dashboard_page"))
         flash("Неверный номер телефона или пароль.", "error")
     return render_template("login.html", form=form, show_navigation=False)
 
@@ -129,6 +130,201 @@ def logout_page():
     session.clear()
     flash("Вы вышли из аккаунта.", "success")
     return redirect(url_for("main.login_page"))
+
+
+def page_user():
+    """Return the authenticated user and the session-selected presentation role."""
+    user = current_user()
+    if not user:
+        return None, None
+    active_role = session.get("active_role", user.role)
+    if active_role == "admin" and not user.is_admin:
+        active_role = user.role
+        session["active_role"] = active_role
+    return user, active_role
+
+
+@bp.get("/dashboard")
+def dashboard_page():
+    user, active_role = page_user()
+    if not user:
+        return redirect(url_for("main.login_page"))
+
+    active_task_count = Task.query.filter(Task.status != "done").count()
+    latest_news = News.query.filter_by(status="published").order_by(News.created_at.desc()).first()
+    month_start = datetime.now(timezone.utc).replace(
+        tzinfo=None, day=1, hour=0, minute=0, second=0, microsecond=0
+    )
+    monthly_expenses = sum(
+        report.total_expenses
+        for report in ExpenseReport.query.filter(ExpenseReport.created_at >= month_start).all()
+    )
+    return render_template(
+        "dashboard.html",
+        user=user,
+        current_user=user,
+        active_role=active_role,
+        active_task_count=active_task_count,
+        monthly_expenses=monthly_expenses,
+        latest_news=latest_news,
+    )
+
+
+@bp.route("/news", methods=["GET", "POST"])
+def news_page():
+    user, active_role = page_user()
+    if not user:
+        return redirect(url_for("main.login_page"))
+
+    form = NewsForm()
+    can_manage = user.is_admin and active_role == "admin"
+    if form.validate_on_submit():
+        if not can_manage:
+            flash("Публиковать новости может только администратор.", "error")
+        else:
+            db.session.add(
+                News(
+                    title=form.title.data.strip(),
+                    description=form.description.data.strip(),
+                    status=form.status.data,
+                )
+            )
+            db.session.commit()
+            flash("Новость сохранена.", "success")
+            return redirect(url_for("main.news_page"))
+
+    query = News.query.order_by(News.created_at.desc())
+    if not can_manage:
+        query = query.filter_by(status="published")
+    return render_template(
+        "news.html",
+        user=user,
+        current_user=user,
+        active_role=active_role,
+        can_manage_news=can_manage,
+        form=form,
+        news_items=query.all(),
+    )
+
+
+@bp.post("/news/<int:news_id>/delete")
+def delete_news_page(news_id):
+    user, active_role = page_user()
+    if not user:
+        return redirect(url_for("main.login_page"))
+    if not user.is_admin or active_role != "admin":
+        flash("Удалять новости может только администратор.", "error")
+        return redirect(url_for("main.news_page"))
+    news_item = db.session.get(News, news_id)
+    if not news_item:
+        flash("Новость не найдена.", "error")
+    else:
+        db.session.delete(news_item)
+        db.session.commit()
+        flash("Новость удалена.", "success")
+    return redirect(url_for("main.news_page"))
+
+
+@bp.route("/news/<int:news_id>/edit", methods=["GET", "POST"])
+def edit_news_page(news_id):
+    user, active_role = page_user()
+    if not user:
+        return redirect(url_for("main.login_page"))
+    if not user.is_admin or active_role != "admin":
+        flash("Редактировать новости может только администратор.", "error")
+        return redirect(url_for("main.news_page"))
+    news_item = db.session.get(News, news_id)
+    if not news_item:
+        flash("Новость не найдена.", "error")
+        return redirect(url_for("main.news_page"))
+    form = NewsForm(obj=news_item)
+    if form.validate_on_submit():
+        news_item.title = form.title.data.strip()
+        news_item.description = form.description.data.strip()
+        news_item.status = form.status.data
+        db.session.commit()
+        flash("Новость обновлена.", "success")
+        return redirect(url_for("main.news_page"))
+    return render_template(
+        "news_edit.html",
+        user=user,
+        current_user=user,
+        active_role=active_role,
+        form=form,
+        news_item=news_item,
+    )
+
+
+@bp.get("/users")
+def users_page():
+    user, active_role = page_user()
+    if not user:
+        return redirect(url_for("main.login_page"))
+    if not user.is_admin or active_role != "admin":
+        flash("Доступ к пользователям разрешен только администратору.", "error")
+        return redirect(url_for("main.dashboard_page"))
+    return render_template(
+        "users.html",
+        user=user,
+        current_user=user,
+        active_role=active_role,
+        users=User.query.order_by(User.created_at.desc()).all(),
+        role_form=UserRoleForm(),
+    )
+
+
+@bp.post("/users/<int:user_id>/role")
+def update_user_role_page(user_id):
+    user, active_role = page_user()
+    if not user:
+        return redirect(url_for("main.login_page"))
+    if not user.is_admin or active_role != "admin":
+        flash("Изменять роли может только администратор.", "error")
+        return redirect(url_for("main.dashboard_page"))
+    form = UserRoleForm()
+    target_user = db.session.get(User, user_id)
+    if not target_user:
+        flash("Пользователь не найден.", "error")
+    elif form.validate_on_submit():
+        target_user.role = form.role.data
+        db.session.commit()
+        flash("Роль пользователя обновлена.", "success")
+    else:
+        flash("Выберите корректную роль.", "error")
+    return redirect(url_for("main.users_page"))
+
+
+@bp.route("/profile", methods=["GET", "POST"])
+def profile_page():
+    user, active_role = page_user()
+    if not user:
+        return redirect(url_for("main.login_page"))
+
+    form = RoleForm()
+    form.role.data = active_role
+    return render_template(
+        "profile.html",
+        user=user,
+        current_user=user,
+        active_role=active_role,
+        form=form,
+    )
+
+
+@bp.post("/change_role")
+def change_role():
+    user = current_user()
+    if not user:
+        return redirect(url_for("main.login_page"))
+    form = RoleForm()
+    if not form.validate_on_submit():
+        flash("Выберите корректную роль.", "error")
+    elif form.role.data == "admin" and not user.is_admin:
+        flash("Режим администратора недоступен для этого аккаунта.", "error")
+    else:
+        session["active_role"] = form.role.data
+        flash(f"Включен режим: {ROLE_LABELS[form.role.data]}.", "success")
+    return redirect(url_for("main.profile_page"))
 
 
 @bp.get("/tasks")
