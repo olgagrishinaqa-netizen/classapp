@@ -3,11 +3,23 @@ import os
 from functools import wraps
 from uuid import uuid4
 
-from flask import Blueprint, current_app, jsonify, render_template, request, send_from_directory, session
+from flask import (
+    Blueprint,
+    current_app,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_from_directory,
+    session,
+    url_for,
+)
 from sqlalchemy.exc import IntegrityError
 from werkzeug.utils import secure_filename
 
 from .extensions import db
+from .forms import ExpenseForm, LoginForm, RegisterForm
 from .models import ExpenseReport, News, Task, User
 
 bp = Blueprint("main", __name__)
@@ -70,7 +82,134 @@ def news_json(news):
 
 @bp.get("/")
 def index():
-    return render_template("index.html")
+    return redirect(url_for("main.tasks_page" if current_user() else "main.login_page"))
+
+
+@bp.route("/login", methods=["GET", "POST"])
+def login_page():
+    if current_user():
+        return redirect(url_for("main.tasks_page"))
+
+    form = LoginForm()
+    if form.validate_on_submit():
+        phone = User.normalize_phone(form.username.data)
+        user = User.query.filter_by(phone=phone).first()
+        if user and user.check_password(form.password.data):
+            session["user_id"] = user.id
+            session["active_role"] = "admin" if user.is_admin else user.role
+            return redirect(url_for("main.tasks_page"))
+        flash("Неверный номер телефона или пароль.", "error")
+    return render_template("login.html", form=form, show_navigation=False)
+
+
+@bp.route("/register", methods=["GET", "POST"])
+def register_page():
+    if current_user():
+        return redirect(url_for("main.tasks_page"))
+
+    form = RegisterForm()
+    if form.validate_on_submit():
+        phone = User.normalize_phone(form.username.data)
+        if not phone:
+            form.username.errors.append("Введите корректный номер телефона.")
+        elif User.query.filter_by(phone=phone).first():
+            form.username.errors.append("Этот номер телефона уже зарегистрирован.")
+        else:
+            user = User(full_name=form.full_name.data.strip(), phone=phone, role="parent")
+            user.set_password(form.password.data)
+            db.session.add(user)
+            db.session.commit()
+            flash("Аккаунт создан. Теперь войдите в приложение.", "success")
+            return redirect(url_for("main.login_page"))
+    return render_template("register.html", form=form, show_navigation=False)
+
+
+@bp.post("/logout")
+def logout_page():
+    session.clear()
+    flash("Вы вышли из аккаунта.", "success")
+    return redirect(url_for("main.login_page"))
+
+
+@bp.get("/tasks")
+def tasks_page():
+    user = current_user()
+    if not user:
+        return redirect(url_for("main.login_page"))
+    tasks_list = Task.query.order_by(Task.created_at.desc()).all()
+    return render_template(
+        "tasks.html",
+        user=user,
+        active_tasks=[task for task in tasks_list if task.status != "done"],
+        completed_tasks=[task for task in tasks_list if task.status == "done"],
+    )
+
+
+@bp.post("/tasks/<int:task_id>/complete")
+def complete_task_page(task_id):
+    user = current_user()
+    if not user:
+        return redirect(url_for("main.login_page"))
+    task = db.session.get(Task, task_id)
+    if not task:
+        flash("Задача не найдена.", "error")
+    elif not user.is_admin:
+        flash("Изменять статус задач может только администратор.", "error")
+    else:
+        task.status = "done" if task.status != "done" else "created"
+        db.session.commit()
+        flash("Статус задачи обновлен.", "success")
+    return redirect(url_for("main.tasks_page"))
+
+
+@bp.route("/expenses", methods=["GET", "POST"])
+def expenses_page():
+    user = current_user()
+    if not user:
+        return redirect(url_for("main.login_page"))
+
+    form = ExpenseForm()
+    if form.validate_on_submit():
+        if not user.is_admin:
+            flash("Добавлять расходы может только администратор.", "error")
+        else:
+            db.session.add(
+                ExpenseReport(
+                    income=0,
+                    expense_items=[
+                        {
+                            "title": form.title.data.strip(),
+                            "amount": float(form.amount.data),
+                            "category": (form.category.data or "Расходы класса").strip(),
+                        }
+                    ],
+                )
+            )
+            db.session.commit()
+            flash("Расход добавлен.", "success")
+            return redirect(url_for("main.expenses_page"))
+
+    reports = ExpenseReport.query.order_by(ExpenseReport.created_at.desc()).all()
+    expenses = [
+        {
+            "title": item.get("title", "Без названия"),
+            "amount": float(item.get("amount", 0)),
+            "category": item.get("category", "Расходы класса"),
+            "created_at": report.created_at,
+        }
+        for report in reports
+        for item in (report.expense_items or [])
+    ]
+    total_income = sum(float(report.income) for report in reports)
+    total_expenses = sum(expense["amount"] for expense in expenses)
+    return render_template(
+        "expenses.html",
+        user=user,
+        form=form,
+        expenses=expenses,
+        total_expenses=total_expenses,
+        balance=total_income - total_expenses,
+    )
 
 
 @bp.post("/api/login")

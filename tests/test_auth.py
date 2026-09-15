@@ -1,5 +1,5 @@
 from app import create_app
-from app.models import User
+from app.models import ExpenseReport, Task, User
 
 
 def test_login_accepts_common_phone_formats(client):
@@ -11,6 +11,41 @@ def test_login_accepts_common_phone_formats(client):
         assert response.status_code == 200, phone
         payload = response.get_json()
         assert payload["user"]["phone"] == "79990000000"
+
+
+def test_mobile_pages_render_and_use_server_forms(client, db):
+    login_page = client.get("/login")
+    assert login_page.status_code == 200
+    assert b"maximum-scale=1.0, user-scalable=no" in login_page.data
+    assert b'name="username"' in login_page.data
+
+    login = client.post(
+        "/login",
+        data={"username": "+7 (999) 000-00-00", "password": "admin123"},
+        follow_redirects=False,
+    )
+    assert login.status_code == 302
+    assert login.headers["Location"].endswith("/tasks")
+
+    task = Task(title="Проверить план", description="На этой неделе")
+    report = ExpenseReport(
+        income=1000,
+        expense_items=[{"title": "Бумага", "amount": 250, "category": "Канцтовары"}],
+    )
+    db.session.add_all([task, report])
+    db.session.commit()
+
+    assert client.get("/tasks").status_code == 200
+    assert client.get("/expenses").status_code == 200
+
+    reports_before = ExpenseReport.query.count()
+    create_expense = client.post(
+        "/expenses",
+        data={"title": "Маркер", "amount": "125.50", "category": "Канцтовары"},
+        follow_redirects=False,
+    )
+    assert create_expense.status_code == 302
+    assert ExpenseReport.query.count() == reports_before + 1
 
 
 def test_user_creation_normalizes_phone(db):

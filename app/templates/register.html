@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Регистрация | Класс{% endblock %}
+{% block content %}
+<section class="flex min-h-[calc(100vh-3rem)] items-center">
+  <div class="w-full rounded-3xl bg-white p-6 shadow-xl shadow-slate-200/60 dark:bg-slate-900 dark:shadow-none">
+    <div class="mb-7">
+      <a href="{{ url_for('main.login_page') }}" class="text-sm font-semibold text-emerald-700 dark:text-emerald-300">← Войти</a>
+      <h1 class="mt-5 text-3xl font-bold tracking-tight">Новый аккаунт</h1>
+      <p class="mt-2 text-slate-500 dark:text-slate-400">Создайте доступ к делам класса.</p>
+    </div>
+    <form method="post" class="space-y-4" novalidate>
+      {{ form.hidden_tag() }}
+      {% for field in [form.full_name, form.username, form.password, form.password_confirm] %}
+        <div>
+          {{ field.label(class="mb-2 block text-sm font-semibold") }}
+          {{ field(class="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-base outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-800 dark:focus:ring-emerald-900", autocomplete="name" if field.name == "full_name" else "tel" if field.name == "username" else "new-password", inputmode="tel" if field.name == "username" else none, placeholder="79990000000" if field.name == "username" else none) }}
+          {% for error in field.errors %}<p class="mt-2 text-sm text-red-600">{{ error }}</p>{% endfor %}
+        </div>
+      {% endfor %}
+      {{ form.submit(class="min-h-12 w-full rounded-xl bg-emerald-700 px-5 text-base font-bold text-white transition hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2") }}
+    </form>
+  </div>
+</section>
+{% endblock %}
