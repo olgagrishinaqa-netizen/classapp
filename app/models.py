@@ -1,5 +1,5 @@
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 
 from flask_login import UserMixin
 from sqlalchemy.orm import validates
@@ -8,8 +8,9 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from .extensions import db
 
 
-def utc_now():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+def local_now():
+    """Return the local time configured for the application server."""
+    return datetime.now()
 
 
 class User(UserMixin, db.Model):
@@ -33,7 +34,7 @@ class User(UserMixin, db.Model):
     phone = db.Column(db.String(32), unique=True, nullable=False, index=True)
     role = db.Column(db.String(32), nullable=False, default="parent")
     password_hash = db.Column(db.String(255), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=local_now, nullable=False)
     last_login = db.Column(db.DateTime, nullable=True)
 
     def set_password(self, password):
@@ -57,7 +58,7 @@ class ExpenseReport(db.Model):
     expense_items = db.Column(db.JSON, nullable=False, default=list)
     receipt_name = db.Column(db.String(255))
     receipt_path = db.Column(db.String(255))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=local_now, nullable=False)
 
     @property
     def total_expenses(self):
@@ -74,7 +75,7 @@ class Payment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
     amount = db.Column(db.Numeric(10, 2), nullable=False)
-    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    created_at = db.Column(db.DateTime, default=local_now, nullable=False)
 
     user = db.relationship("User", backref=db.backref("payments", lazy=True))
 
@@ -87,7 +88,7 @@ class Expense(db.Model):
     amount = db.Column(db.Numeric(10, 2), nullable=False)
     category = db.Column(db.String(64), nullable=False, default="Общие")
     receipt_path = db.Column(db.String(255), nullable=True)
-    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    created_at = db.Column(db.DateTime, default=local_now, nullable=False)
 
     @property
     def receipt_url(self):
@@ -101,7 +102,7 @@ class Task(db.Model):
     title = db.Column(db.String(180), nullable=False)
     description = db.Column(db.Text, default="")
     status = db.Column(db.String(20), nullable=False, default="created")
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=local_now, nullable=False)
 
 
 class News(db.Model):
@@ -111,8 +112,8 @@ class News(db.Model):
     status = db.Column(db.String(20), nullable=False, default="draft")
     image_name = db.Column(db.String(255))
     image_path = db.Column(db.String(255))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=local_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=local_now, onupdate=local_now, nullable=False)
 
     @property
     def image_url(self):
@@ -125,4 +126,4 @@ class TaskComment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     task_id = db.Column(db.Integer, db.ForeignKey("task.id"), nullable=False)
     body = db.Column(db.Text, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=local_now, nullable=False)
