@@ -3,7 +3,7 @@ from decimal import Decimal
 from flask_wtf import FlaskForm
 from flask_wtf.file import FileAllowed, FileField
 from wtforms import DecimalField, PasswordField, SelectField, StringField, SubmitField, TextAreaField
-from wtforms.validators import DataRequired, EqualTo, Length, NumberRange
+from wtforms.validators import DataRequired, EqualTo, Length, NumberRange, Optional
 
 
 class LoginForm(FlaskForm):
@@ -74,3 +74,17 @@ class UserRoleForm(FlaskForm):
         validators=[DataRequired()],
     )
     submit = SubmitField("Сохранить")
+
+
+class UserManagementForm(FlaskForm):
+    last_name = StringField("Фамилия", validators=[DataRequired(), Length(max=80)])
+    first_name = StringField("Имя", validators=[DataRequired(), Length(max=80)])
+    middle_name = StringField("Отчество", validators=[Length(max=80)])
+    phone = StringField("Телефон", validators=[DataRequired(), Length(max=32)])
+    role = SelectField(
+        "Роль",
+        choices=[("parent", "Родитель"), ("student", "Ученик"), ("admin", "Администратор")],
+        validators=[DataRequired()],
+    )
+    password = PasswordField("Пароль", validators=[Optional(), Length(min=6, max=128)])
+    submit = SubmitField("Сохранить пользователя")

@@ -146,6 +146,76 @@ def test_dashboard_news_users_and_profile_role_mode(client, db):
     assert client.get("/users").headers["Location"].endswith("/dashboard")
 
 
+def test_user_management_creates_sorts_filters_edits_and_deletes_users(client, db):
+    client.post("/login", data={"username": "79990000000", "password": "admin123"})
+
+    create_student = client.post(
+        "/users",
+        data={
+            "action": "create_user",
+            "last_name": "Яковлев",
+            "first_name": "Антон",
+            "middle_name": "",
+            "phone": "+375 (29) 123-45-67",
+            "role": "student",
+            "password": "secure-pass",
+        },
+        follow_redirects=False,
+    )
+    create_parent = client.post(
+        "/users",
+        data={
+            "action": "create_user",
+            "last_name": "Алексеева",
+            "first_name": "Мария",
+            "middle_name": "Ивановна",
+            "phone": "+375 (33) 123-45-67",
+            "role": "parent",
+            "password": "secure-pass",
+        },
+        follow_redirects=False,
+    )
+    assert create_student.status_code == 302
+    assert create_parent.status_code == 302
+
+    student = User.query.filter_by(phone="375291234567").one()
+    parent = User.query.filter_by(phone="375331234567").one()
+    page = client.get("/users")
+    page_text = page.data.decode()
+    assert page_text.index("Администратор") < page_text.index("Алексеева Мария Ивановна")
+    assert page_text.index("Алексеева Мария Ивановна") < page_text.index("Яковлев Антон")
+    assert "Яковлев Антон" not in client.get("/users?role_filter=parent").data.decode()
+
+    edit = client.post(
+        f"/users/edit/{student.id}",
+        data={
+            "last_name": "Яковлев",
+            "first_name": "Антон",
+            "middle_name": "Петрович",
+            "phone": "+375 (29) 123-45-67",
+            "role": "parent",
+            "password": "",
+        },
+        follow_redirects=False,
+    )
+    delete = client.post(f"/users/delete/{parent.id}", follow_redirects=False)
+    assert edit.status_code == 302
+    assert delete.status_code == 302
+    assert User.query.filter_by(id=student.id).one().full_name == "Яковлев Антон Петрович"
+    assert db.session.get(User, parent.id) is None
+
+
+def test_login_updates_last_login(client, db):
+    admin = User.query.filter_by(phone="79990000000").one()
+    admin.last_login = None
+    db.session.commit()
+
+    response = client.post("/api/login", json={"phone": "79990000000", "password": "admin123"})
+
+    assert response.status_code == 200
+    assert db.session.get(User, admin.id).last_login is not None
+
+
 def test_user_creation_normalizes_phone(db):
     user = User(full_name="Иван Иванов", phone="+7 (999) 123-45-67", role="parent")
     user.set_password("secure-pass")
