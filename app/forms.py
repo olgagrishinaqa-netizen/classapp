@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from flask_wtf import FlaskForm
+from flask_wtf.file import FileAllowed, FileField
 from wtforms import DecimalField, PasswordField, SelectField, StringField, SubmitField, TextAreaField
 from wtforms.validators import DataRequired, EqualTo, Length, NumberRange
 
@@ -29,7 +30,21 @@ class ExpenseForm(FlaskForm):
         places=2,
     )
     category = StringField("Категория", validators=[Length(max=80)])
+    receipt = FileField(
+        "Фото или файл чека",
+        validators=[FileAllowed(["jpg", "jpeg", "png", "webp", "pdf"], "Допустимы JPG, PNG, WEBP или PDF.")],
+    )
     submit = SubmitField("Добавить расход")
+
+
+class PaymentForm(FlaskForm):
+    user_id = SelectField("Плательщик", coerce=int, validators=[DataRequired()])
+    amount = DecimalField(
+        "Сумма взноса",
+        validators=[DataRequired(), NumberRange(min=Decimal("0.01"))],
+        places=2,
+    )
+    submit = SubmitField("Зафиксировать взнос")
 
 
 class NewsForm(FlaskForm):
