@@ -160,7 +160,26 @@ jobs:
             fi
 
             $KUBE apply -f /opt/classapp/k8s/patroni.yaml
-            $KUBE rollout status statefulset/classapp-patroni --namespace default --timeout=180s
+            if ! $KUBE rollout status statefulset/classapp-patroni \
+              --namespace default \
+              --timeout=180s; then
+              echo "❌ Patroni не стал Ready. Диагностика Kubernetes:"
+              $KUBE get pods -l app.kubernetes.io/name=patroni \
+                --namespace default \
+                --output wide || true
+              $KUBE describe pods -l app.kubernetes.io/name=patroni \
+                --namespace default || true
+              $KUBE logs statefulset/classapp-patroni \
+                --namespace default \
+                --all-containers=true \
+                --tail=300 || true
+              echo "События namespace default:"
+              $KUBE get events \
+                --namespace default \
+                --sort-by=.lastTimestamp \
+                --output wide || true
+              exit 1
+            fi
 
             $KUBE apply -f /opt/classapp/k8s/services.yaml
 
