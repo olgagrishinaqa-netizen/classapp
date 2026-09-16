@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: classapp-patroni
+  namespace: default
+  labels:
+    app.kubernetes.io/name: patroni
+    app.kubernetes.io/part-of: classapp
+spec:
+  serviceName: classapp-patroni
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: patroni
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: patroni
+        app.kubernetes.io/part-of: classapp
+    spec:
+      containers:
+        - name: patroni
+          image: registry.opensource.zalan.do/acid/spilo-15:3.0-p1
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PATRONI_SCOPE
+              value: classapp-ha
+            - name: PATRONI_NAMESPACE
+              value: default
+            - name: PATRONI_ETCD3_HOSTS
+              value: etcd-service:2379
+            - name: PATRONI_POSTGRESQL_DATA_DIR
+              value: /data/patroni
+            - name: PATRONI_SUPERUSER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: classapp-secrets
+                  key: db-password
+            - name: PGUSER_SUPERUSER
+              value: postgres
+            - name: PGPASSWORD_SUPERUSER
+              valueFrom:
+                secretKeyRef:
+                  name: classapp-secrets
+                  key: db-password
+          ports:
+            - name: postgresql
+              containerPort: 5432
+              protocol: TCP
+          volumeMounts:
+            - name: patroni-data
+              mountPath: /data
+          resources:
+            requests:
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+      volumes:
+        - name: patroni-data
+          emptyDir: {}
