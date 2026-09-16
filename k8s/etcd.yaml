@@ -8,6 +8,9 @@ metadata:
     app.kubernetes.io/part-of: classapp
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
+  progressDeadlineSeconds: 180
   selector:
     matchLabels:
       app.kubernetes.io/name: etcd

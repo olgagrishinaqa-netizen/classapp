@@ -139,6 +139,12 @@ jobs:
             docker compose -f docker-compose.logging.yml up -d
 
             echo "Применяем Kubernetes-манифесты..."
+            echo "Удаляем завершившиеся старые Pod etcd..."
+            $KUBE delete pod \
+              --namespace default \
+              --selector app.kubernetes.io/name=etcd \
+              --field-selector=status.phase=Succeeded \
+              --ignore-not-found=true
             $KUBE apply -f /opt/classapp/k8s/etcd.yaml
             if ! $KUBE rollout status deployment/etcd --namespace default --timeout=120s; then
               echo "❌ etcd не стал Ready. Диагностика Kubernetes:"
