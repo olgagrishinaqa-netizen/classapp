@@ -1,0 +1,119 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: classapp-nginx-config
+  namespace: default
+  labels:
+    app.kubernetes.io/name: classapp-nginx
+    app.kubernetes.io/part-of: classapp
+data:
+  nginx.conf: |
+    worker_processes auto;
+    error_log /var/log/nginx/error.log notice;
+    pid /tmp/nginx.pid;
+
+    events {
+        worker_connections 1024;
+    }
+
+    http {
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+
+        log_format nginx_json escape=json
+            '{"time": "$time_local", '
+            '"remote_addr": "$remote_addr", '
+            '"request_method": "$request_method", '
+            '"request_uri": "$request_uri", '
+            '"status": "$status", '
+            '"body_bytes_sent": "$body_bytes_sent", '
+            '"upstream_response_time": "$upstream_response_time"}';
+
+        access_log /var/log/nginx/access.json.log nginx_json;
+        sendfile on;
+        keepalive_timeout 65;
+        client_max_body_size 20m;
+
+        server {
+            listen 8080;
+            server_name _;
+
+            location / {
+                proxy_pass http://classapp-web-service:8000;
+                proxy_http_version 1.1;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header Connection "";
+                proxy_read_timeout 60s;
+            }
+        }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: classapp-nginx
+  namespace: default
+  labels:
+    app.kubernetes.io/name: classapp-nginx
+    app.kubernetes.io/part-of: classapp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: classapp-nginx
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: classapp-nginx
+        app.kubernetes.io/part-of: classapp
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.25-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+            - name: nginx-logs
+              mountPath: /var/log/nginx
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: classapp-nginx-config
+        - name: nginx-logs
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: classapp-nginx
+  namespace: default
+  labels:
+    app.kubernetes.io/name: classapp-nginx
+    app.kubernetes.io/part-of: classapp
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: classapp-nginx
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      nodePort: 30080
+      protocol: TCP

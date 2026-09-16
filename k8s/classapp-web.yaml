@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: classapp-web
+  namespace: default
+  labels:
+    app.kubernetes.io/name: classapp-web
+    app.kubernetes.io/part-of: classapp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: classapp-web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: classapp-web
+        app.kubernetes.io/part-of: classapp
+    spec:
+      containers:
+        - name: classapp-web
+          image: ghcr.io/olgagrishinaqa-netizen/classapp:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: classapp-secrets
+                  key: db-password
+            - name: DATABASE_URL
+              value: postgresql://postgres:$(DB_PASSWORD)@classapp-db-master:5432/classapp
+            - name: POSTGRES_HOST
+              value: classapp-db-master
+            - name: POSTGRES_DB
+              value: classapp
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              value: "$(DB_PASSWORD)"
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: classapp-secrets
+                  key: secret-key
+            - name: APP_JSON_LOG_PATH
+              value: /var/log/classapp/app.json.log
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          volumeMounts:
+            - name: classapp-logs
+              mountPath: /var/log/classapp
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+      volumes:
+        - name: classapp-logs
+          hostPath:
+            path: /var/log/classapp
+            type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: classapp-web-service
+  namespace: default
+  labels:
+    app.kubernetes.io/name: classapp-web
+    app.kubernetes.io/part-of: classapp
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: classapp-web
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      protocol: TCP

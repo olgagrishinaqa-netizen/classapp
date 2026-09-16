@@ -49,6 +49,7 @@ jobs:
             sudo mkdir -p /opt/classapp/provisioning/datasources
             sudo mkdir -p /opt/classapp/provisioning/dashboards
             sudo mkdir -p /opt/classapp/provisioning/dashboards_json
+            sudo mkdir -p /opt/classapp/k8s
             sudo mkdir -p /var/log/classapp /var/log/nginx
             sudo chown -R ubuntu:ubuntu /opt/classapp
             sudo chmod -R 777 /var/log/classapp /var/log/nginx
@@ -60,7 +61,7 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_KEY }}
           port: 22
-          source: "docker-compose.prod.yml,docker-compose.logging.yml,nginx.conf,promtail-config.yml,monitoring/prometheus.yml,provisioning/datasources/loki.yml,provisioning/dashboards/dashboards.yml,provisioning/dashboards_json/classapp_dashboard.json"
+          source: "docker-compose.prod.yml,docker-compose.logging.yml,nginx.conf,promtail-config.yml,monitoring/prometheus.yml,provisioning/datasources/loki.yml,provisioning/dashboards/dashboards.yml,provisioning/dashboards_json/classapp_dashboard.json,k8s/*.yaml"
           target: "/opt/classapp"
 
       - name: Deploy production web and logging stacks
@@ -72,7 +73,7 @@ jobs:
           port: 22
           envs: APP_SECRET_KEY,APP_DB_PASSWORD,GRAFANA_ADMIN_PASSWORD
           script: |
-            set -e
+            set -euo pipefail
 
             if [ -z "$APP_SECRET_KEY" ] || [ -z "$APP_DB_PASSWORD" ]; then
               echo "❌ Missing required deploy secrets"
@@ -80,7 +81,12 @@ jobs:
             fi
 
             cd /opt/classapp
+            KUBE="sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl"
             REPO_OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+            K8S_IMAGE="ghcr.io/${REPO_OWNER_LOWER}/classapp:main-${{ github.event.workflow_run.head_sha }}"
+
+            echo "Проверяем доступность K3s..."
+            $KUBE version --client
 
             cat << ENV > .env
             REPO_OWNER=${REPO_OWNER_LOWER}
@@ -90,6 +96,16 @@ jobs:
             GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
             ENV
             chmod 600 .env
+
+            echo "Создаем безопасный сейф с паролями в K3s..."
+            $KUBE create secret generic classapp-secrets \
+              --namespace default \
+              --from-literal=db-password="$APP_DB_PASSWORD" \
+              --from-literal=secret-key="$APP_SECRET_KEY" \
+              --dry-run=client -o yaml | $KUBE apply -f -
+
+            echo "Копируем Kubernetes-манифесты на сервер..."
+            sudo mkdir -p /opt/classapp/k8s
 
             echo "Pulling production images..."
             docker compose -f docker-compose.prod.yml pull
@@ -122,6 +138,35 @@ jobs:
             echo "Starting logging stack..."
             docker compose -f docker-compose.logging.yml up -d
 
+            echo "Применяем Kubernetes-манифесты..."
+            $KUBE apply -f /opt/classapp/k8s/etcd.yaml
+            $KUBE rollout status deployment/etcd --namespace default --timeout=120s
+
+            $KUBE apply -f /opt/classapp/k8s/patroni.yaml
+            $KUBE rollout status statefulset/classapp-patroni --namespace default --timeout=180s
+
+            $KUBE apply -f /opt/classapp/k8s/services.yaml
+
+            $KUBE apply -f /opt/classapp/k8s/classapp-web.yaml
+            $KUBE apply -f /opt/classapp/k8s/classapp-nginx.yaml
+            $KUBE set image deployment/classapp-web \
+              classapp-web="$K8S_IMAGE" \
+              --namespace default
+            $KUBE rollout status deployment/classapp-web --namespace default --timeout=180s
+            $KUBE rollout status deployment/classapp-nginx --namespace default --timeout=120s
+
+            echo "Проверяем Kubernetes-сервисы и NodePort..."
+            $KUBE get pods -o wide
+            $KUBE get services
+            NODE_PORT=$($KUBE get service classapp-nginx \
+              --namespace default \
+              --output jsonpath='{.spec.ports[0].nodePort}')
+            if [ "$NODE_PORT" != "30080" ]; then
+              echo "❌ Unexpected Kubernetes NodePort: $NODE_PORT"
+              exit 1
+            fi
+            echo "✅ Kubernetes application is available on NodePort $NODE_PORT"
+
             echo "Pruning unused images..."
             docker image prune -f
 
@@ -148,5 +193,5 @@ jobs:
           )
 
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-            --data-urlencode "chat_id heat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+            --data-urlencode "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
             --data-urlencode "text=${TEXT}"
