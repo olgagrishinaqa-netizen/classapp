@@ -1,0 +1,182 @@
+---
+# Safely installs K3s next to the existing classapp Docker Compose stack.
+#
+# Guarantees:
+#   - K3s is installed WITHOUT the bundled Traefik ingress and WITHOUT
+#     ServiceLB, so it never tries to bind ports 80/443.
+#   - Before touching anything, we assert that Docker already owns ports
+#     80, 3000 and 5432. If it doesn't, the play aborts immediately instead
+#     of masking a pre-existing outage.
+#   - After installing K3s, we re-check the same ports and fail loudly if
+#     their owning process changed, or if K3s created any Service that
+#     claims one of those ports.
+#   - The play never stops, restarts, or reconfigures any Docker container,
+#     so the live site keeps running throughout.
+#
+# Usage:
+#   ansible-playbook -i inventory.ini playbook.yml
+
+- name: Install K3s in safe mode alongside the existing Docker Compose stack
+  hosts: classapp_prod
+  become: true
+  gather_facts: true
+
+  vars:
+    log_dirs:
+      - /var/log/classapp
+      - /var/log/nginx
+    k3s_binary_path: /usr/local/bin/k3s
+    kubectl_binary_path: /usr/local/bin/kubectl
+    kubeconfig_path: /etc/rancher/k3s/k3s.yaml
+    # Ports that must remain owned by the running Docker Compose stack
+    # (nginx: 80, grafana: 3000, postgres: 5432).
+    protected_ports:
+      - 80
+      - 3000
+      - 5432
+
+  pre_tasks:
+    - name: Ensure the Docker daemon is reachable (safety pre-check)
+      ansible.builtin.command: docker info
+      register: docker_info
+      changed_when: false
+
+    - name: Capture which process currently owns each protected port
+      ansible.builtin.shell: |
+        set -o pipefail
+        ss -ltnp | grep -E ":({{ protected_ports | join('|') }})\b" || true
+      args:
+        executable: /bin/bash
+      register: ports_before
+      changed_when: false
+
+    - name: Show protected ports before making any change
+      ansible.builtin.debug:
+        var: ports_before.stdout_lines
+
+    - name: Abort if a protected port is not currently bound
+      ansible.builtin.assert:
+        that:
+          - "ports_before.stdout_lines | select('search', ':' ~ item ~ '(\\s|$)') | list | length > 0"
+        fail_msg: >-
+          Port {{ item }} does not look bound right now. Refusing to install
+          K3s so we don't mask an already-broken production site. Investigate
+          the Docker Compose stack first.
+        success_msg: "Port {{ item }} is currently bound as expected (site is up)."
+      loop: "{{ protected_ports }}"
+
+  tasks:
+    - name: Create host log directories if they do not already exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0777"
+      loop: "{{ log_dirs }}"
+
+    - name: Check whether K3s is already installed
+      ansible.builtin.stat:
+        path: "{{ k3s_binary_path }}"
+      register: k3s_binary
+
+    - name: Install K3s without Traefik and without ServiceLB (safe mode)
+      ansible.builtin.shell: |
+        set -o pipefail
+        curl -fsSL https://get.k3s.io | sh -s - \
+          --disable traefik \
+          --disable servicelb \
+          --write-kubeconfig-mode 644
+      args:
+        executable: /bin/bash
+      when: not k3s_binary.stat.exists
+      register: k3s_install
+
+    - name: Ensure the k3s systemd service is enabled and started
+      ansible.builtin.systemd:
+        name: k3s
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    - name: Wait for the K3s API server to accept connections
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: 6443
+        timeout: 90
+
+  post_tasks:
+    - name: Confirm the k3s service is active
+      ansible.builtin.command: systemctl is-active k3s
+      register: k3s_status
+      changed_when: false
+      failed_when: k3s_status.stdout != "active"
+
+    - name: List K3s namespaces/pods for a quick sanity check
+      ansible.builtin.command: "{{ kubectl_binary_path }} get pods -A"
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: k3s_pods
+      changed_when: false
+
+    - name: Show K3s pods
+      ansible.builtin.debug:
+        var: k3s_pods.stdout_lines
+
+    - name: Ensure no K3s Service claims one of the protected ports
+      ansible.builtin.shell: |
+        set -o pipefail
+        {{ kubectl_binary_path }} get svc -A -o wide | grep -E "{{ protected_ports | join('|') }}" || true
+      args:
+        executable: /bin/bash
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: k3s_services
+      changed_when: false
+
+    - name: Fail if K3s exposed a protected port via a Service
+      ansible.builtin.assert:
+        that:
+          - k3s_services.stdout == ""
+        fail_msg: >-
+          K3s appears to expose one of the protected ports
+          {{ protected_ports }} via a Service:
+          {{ k3s_services.stdout }}
+        success_msg: "K3s did not claim any of the protected ports."
+
+    - name: Re-capture which process owns each protected port after install
+      ansible.builtin.shell: |
+        set -o pipefail
+        ss -ltnp | grep -E ":({{ protected_ports | join('|') }})\b" || true
+      args:
+        executable: /bin/bash
+      register: ports_after
+      changed_when: false
+
+    - name: Show protected ports after installing K3s
+      ansible.builtin.debug:
+        var: ports_after.stdout_lines
+
+    - name: Fail if the owner of a protected port changed
+      ansible.builtin.assert:
+        that:
+          - >-
+            (ports_before.stdout_lines
+              | select('search', ':' ~ item ~ '(\s|$)') | list | sort)
+            ==
+            (ports_after.stdout_lines
+              | select('search', ':' ~ item ~ '(\s|$)') | list | sort)
+        fail_msg: >-
+          The process holding port {{ item }} changed after installing K3s!
+          Docker Compose may have lost that port. Investigate immediately.
+        success_msg: "Port {{ item }} is still held by the same process as before."
+      loop: "{{ protected_ports }}"
+
+    - name: Confirm the existing Docker containers are still running
+      ansible.builtin.command: docker ps
+      register: docker_ps
+      changed_when: false
+
+    - name: Show currently running Docker containers
+      ansible.builtin.debug:
+        var: docker_ps.stdout_lines
