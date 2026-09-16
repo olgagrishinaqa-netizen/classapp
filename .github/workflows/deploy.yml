@@ -151,6 +151,11 @@ jobs:
                 --namespace default \
                 --all-containers=true \
                 --tail=200 || true
+              echo "События namespace default:"
+              $KUBE get events \
+                --namespace default \
+                --sort-by=.lastTimestamp \
+                --output wide || true
               exit 1
             fi
 
