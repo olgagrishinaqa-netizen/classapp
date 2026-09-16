@@ -3,9 +3,9 @@
 #
 # Guarantees:
 #   - K3s is installed WITHOUT the bundled Traefik ingress and WITHOUT
-#     ServiceLB, so it never tries to bind ports 80/443.
+#     ServiceLB, so it never tries to bind the production HTTP ports.
 #   - Before touching anything, we assert that Docker already owns ports
-#     80, 3000 and 5432. If it doesn't, the play aborts immediately instead
+#     80 and 3000. If it doesn't, the play aborts immediately instead
 #     of masking a pre-existing outage.
 #   - After installing K3s, we re-check the same ports and fail loudly if
 #     their owning process changed, or if K3s created any Service that
@@ -17,7 +17,7 @@
 #   ansible-playbook -i inventory.ini playbook.yml
 
 - name: Install K3s in safe mode alongside the existing Docker Compose stack
-  hosts: classapp_prod
+  hosts: classapp-prod
   become: true
   gather_facts: true
 
@@ -29,11 +29,10 @@
     kubectl_binary_path: /usr/local/bin/kubectl
     kubeconfig_path: /etc/rancher/k3s/k3s.yaml
     # Ports that must remain owned by the running Docker Compose stack
-    # (nginx: 80, grafana: 3000, postgres: 5432).
+    # (nginx: 80 and Grafana: 3000).
     protected_ports:
       - 80
       - 3000
-      
 
   pre_tasks:
     - name: Ensure the Docker daemon is reachable (safety pre-check)
@@ -53,6 +52,22 @@
     - name: Show protected ports before making any change
       ansible.builtin.debug:
         var: ports_before.stdout_lines
+
+    - name: Confirm Docker proxy owns every protected port before installation
+      ansible.builtin.assert:
+        that:
+          - >-
+            (ports_before.stdout_lines
+              | select('search', ':' ~ item ~ '(\\s|$)')
+              | select('search', 'docker-proxy')
+              | list
+              | length) > 0
+        fail_msg: >-
+          Port {{ item }} is not visibly owned by docker-proxy. Refusing to
+          install K3s because the expected Docker production listener cannot
+          be confirmed.
+        success_msg: "Docker proxy owns protected port {{ item }}."
+      loop: "{{ protected_ports }}"
 
     - name: Abort if a protected port is not currently bound
       ansible.builtin.assert:
@@ -83,7 +98,7 @@
     - name: Install K3s without Traefik and without ServiceLB (safe mode)
       ansible.builtin.shell: |
         set -o pipefail
-        curl -fsSL https://get.k3s.io | sh -s - \
+        sh -c "$(curl -fsSL https://k3s.io)" -- \
           --disable traefik \
           --disable servicelb \
           --write-kubeconfig-mode 644
@@ -170,6 +185,21 @@
           The process holding port {{ item }} changed after installing K3s!
           Docker Compose may have lost that port. Investigate immediately.
         success_msg: "Port {{ item }} is still held by the same process as before."
+      loop: "{{ protected_ports }}"
+
+    - name: Confirm Docker proxy still owns every protected port
+      ansible.builtin.assert:
+        that:
+          - >-
+            (ports_after.stdout_lines
+              | select('search', ':' ~ item ~ '(\\s|$)')
+              | select('search', 'docker-proxy')
+              | list
+              | length) > 0
+        fail_msg: >-
+          Port {{ item }} is no longer visibly owned by docker-proxy after
+          K3s installation.
+        success_msg: "Docker proxy still owns protected port {{ item }}."
       loop: "{{ protected_ports }}"
 
     - name: Confirm the existing Docker containers are still running
