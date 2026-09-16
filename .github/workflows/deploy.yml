@@ -104,6 +104,17 @@ jobs:
               --from-literal=secret-key="$APP_SECRET_KEY" \
               --dry-run=client -o yaml | $KUBE apply -f -
 
+            echo "Освобождаем место до загрузки новых образов..."
+            docker container prune -f
+            docker image prune -af
+            docker builder prune -af || true
+            echo "Освобождаем неиспользуемые образы K3s/containerd..."
+            if sudo k3s crictl images >/dev/null 2>&1; then
+              sudo k3s crictl rmi --prune || true
+            fi
+            sudo journalctl --vacuum-time=7d || true
+            df -h / /var/lib/docker /var/lib/rancher 2>/dev/null || df -h
+
             echo "Копируем Kubernetes-манифесты на сервер..."
             sudo mkdir -p /opt/classapp/k8s
 
@@ -138,12 +149,15 @@ jobs:
             echo "Starting logging stack..."
             docker compose -f docker-compose.logging.yml up -d
 
-            echo "Освобождаем место на image filesystem перед запуском K3s..."
-            docker image prune -af
-            docker builder prune -af || true
             df -h / /var/lib/docker /var/lib/rancher 2>/dev/null || df -h
 
             echo "Применяем Kubernetes-манифесты..."
+            echo "Проверяем состояние ноды перед запуском Kubernetes..."
+            $KUBE get nodes \
+              --output=custom-columns=NAME:.metadata.name,READY:.status.conditions[-1].status,TAINTS:.spec.taints \
+              || true
+            echo "Состояние диска K3s/containerd:"
+            sudo k3s crictl imagefsinfo || true
             echo "Удаляем завершившиеся старые Pod etcd..."
             $KUBE delete pod \
               --namespace default \
