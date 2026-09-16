@@ -140,7 +140,19 @@ jobs:
 
             echo "Применяем Kubernetes-манифесты..."
             $KUBE apply -f /opt/classapp/k8s/etcd.yaml
-            $KUBE rollout status deployment/etcd --namespace default --timeout=120s
+            if ! $KUBE rollout status deployment/etcd --namespace default --timeout=120s; then
+              echo "❌ etcd не стал Ready. Диагностика Kubernetes:"
+              $KUBE get pods -l app.kubernetes.io/name=etcd \
+                --namespace default \
+                --output wide || true
+              $KUBE describe pods -l app.kubernetes.io/name=etcd \
+                --namespace default || true
+              $KUBE logs deployment/etcd \
+                --namespace default \
+                --all-containers=true \
+                --tail=200 || true
+              exit 1
+            fi
 
             $KUBE apply -f /opt/classapp/k8s/patroni.yaml
             $KUBE rollout status statefulset/classapp-patroni --namespace default --timeout=180s

@@ -26,6 +26,16 @@ spec:
               value: "yes"
             - name: ETCD_ENABLE_V2
               value: "true"
+            - name: ETCD_NAME
+              value: etcd
+            - name: ETCD_INITIAL_CLUSTER
+              value: etcd=http://127.0.0.1:2380
+            - name: ETCD_INITIAL_CLUSTER_STATE
+              value: new
+            - name: ETCD_INITIAL_ADVERTISE_PEER_URLS
+              value: http://127.0.0.1:2380
+            - name: ETCD_LISTEN_PEER_URLS
+              value: http://0.0.0.0:2380
             - name: ETCD_ADVERTISE_CLIENT_URLS
               value: "http://etcd-service:2379"
             - name: ETCD_LISTEN_CLIENT_URLS
@@ -34,6 +44,17 @@ spec:
             - name: client
               containerPort: 2379
               protocol: TCP
+            - name: peer
+              containerPort: 2380
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: client
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
           resources:
             requests:
               memory: 64Mi
