@@ -14,12 +14,34 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # --- НОВЫЙ ДИАГНОСТИЧЕСКИЙ ШАГ (FAIL-FAST) ---
+      - name: Check SSH port availability (Fail-Fast)
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$SSH_HOST" ]; then
+            echo "❌ Error: SSH_HOST secret is empty. Check your GitHub Repository Secrets."
+            exit 1
+          fi
+
+          echo "Checking TCP port 22 on configured SSH host: $SSH_HOST..."
+          if nc -vz -w 10 "$SSH_HOST" 22; then
+            echo "✅ Connection successful! Port 22 is open and reachable."
+          else
+            echo "❌ Connection failed! Target host $SSH_HOST is NOT reachable on port 22."
+            echo "👉 Please check if your VM is running and port 22 is allowed for 0.0.0.0/0 in Yandex Cloud Security Groups."
+            exit 1
+          fi
+
       - name: Prepare server directories and log folders
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ubuntu
           key: ${{ secrets.SSH_KEY }}
+          port: 22
           script: |
             set -e
             sudo mkdir -p /opt/classapp
@@ -37,6 +59,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ubuntu
           key: ${{ secrets.SSH_KEY }}
+          port: 22
           source: "docker-compose.prod.yml,docker-compose.logging.yml,nginx.conf,promtail-config.yml,monitoring/prometheus.yml,provisioning/datasources/loki.yml,provisioning/dashboards/dashboards.yml,provisioning/dashboards_json/classapp_dashboard.json"
           target: "/opt/classapp"
 
@@ -46,6 +69,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ubuntu
           key: ${{ secrets.SSH_KEY }}
+          port: 22
           envs: APP_SECRET_KEY,APP_DB_PASSWORD,GRAFANA_ADMIN_PASSWORD
           script: |
             set -e
@@ -124,5 +148,5 @@ jobs:
           )
 
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-            --data-urlencode "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+            --data-urlencode "chat_id heat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
             --data-urlencode "text=${TEXT}"
