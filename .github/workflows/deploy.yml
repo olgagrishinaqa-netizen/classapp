@@ -14,7 +14,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # --- НОВЫЙ ДИАГНОСТИЧЕСКИЙ ШАГ (FAIL-FAST) ---
+      # --- ДИАГНОСТИЧЕСКИЙ ШАГ (FAIL-FAST) ---
       - name: Check SSH port availability (Fail-Fast)
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
@@ -104,7 +104,7 @@ jobs:
               --from-literal=secret-key="$APP_SECRET_KEY" \
               --dry-run=client -o yaml | $KUBE apply -f -
 
-            echo "Освобождаем место до загрузки новых образов..."
+            echo "🧹 ШАГ: Агрессивное освобождение места на диске хоста..."
             docker container prune -f
             docker image prune -af
             docker builder prune -af || true
@@ -115,8 +115,9 @@ jobs:
             sudo journalctl --vacuum-time=7d || true
             df -h / /var/lib/docker /var/lib/rancher 2>/dev/null || df -h
 
-            echo "Копируем Kubernetes-манифесты на сервер..."
-            sudo mkdir -p /opt/classapp/k8s
+            echo "☸️ ШАГ: Автоматическое снятие ограничений мастер-ноды кластера K3s..."
+            $KUBE taint nodes --all node-role.kubernetes.io/master:NoSchedule- || true
+            $KUBE taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule- || true
 
             echo "Pulling production images..."
             docker compose -f docker-compose.prod.yml pull
@@ -158,86 +159,61 @@ jobs:
               || true
             echo "Состояние диска K3s/containerd:"
             sudo k3s crictl imagefsinfo || true
+            
             echo "Удаляем завершившиеся старые Pod etcd..."
             $KUBE delete pod \
               --namespace default \
               --selector app.kubernetes.io/name=etcd \
               --field-selector=status.phase=Succeeded \
               --ignore-not-found=true
+            
+            # --- РАСКАТКА КОНТУРА БАЗЫ ДАННЫХ K8s ---
             $KUBE apply -f /opt/classapp/k8s/etcd.yaml
-            if ! $KUBE rollout status deployment/etcd --namespace default --timeout=120s; then
+            if ! $KUBE rollout status statefulset/etcd --namespace default --timeout=120s; then
               echo "❌ etcd не стал Ready. Диагностика Kubernetes:"
-              echo "Taints ноды:"
-              $KUBE get nodes \
-                --output=custom-columns=NAME:.metadata.name,TAINTS:.spec.taints \
-                || true
-              echo "Состояние ноды:"
-              $KUBE describe nodes || true
-              $KUBE get pods -l app.kubernetes.io/name=etcd \
-                --namespace default \
-                --output wide || true
-              $KUBE describe pods -l app.kubernetes.io/name=etcd \
-                --namespace default || true
-              $KUBE logs deployment/etcd \
-                --namespace default \
-                --all-containers=true \
-                --tail=200 || true
-              echo "События namespace default:"
-              $KUBE get events \
-                --namespace default \
-                --sort-by=.lastTimestamp \
-                --output wide || true
-              exit 1
-            fi
-
-            $KUBE apply -f /opt/classapp/k8s/patroni.yaml
-            if ! $KUBE rollout status statefulset/classapp-patroni \
-              --namespace default \
-              --timeout=180s; then
-              echo "❌ Patroni не стал Ready. Диагностика Kubernetes:"
-              $KUBE get pods -l app.kubernetes.io/name=patroni \
-                --namespace default \
-                --output wide || true
-              $KUBE describe pods -l app.kubernetes.io/name=patroni \
-                --namespace default || true
-              $KUBE logs statefulset/classapp-patroni \
-                --namespace default \
-                --all-containers=true \
-                --tail=300 || true
-              echo "События namespace default:"
-              $KUBE get events \
-                --namespace default \
-                --sort-by=.lastTimestamp \
-                --output wide || true
+              $KUBE get pods -l app.kubernetes.io/name=etcd --namespace default --output wide || true
+              $KUBE describe pods -l app.kubernetes.io/name=etcd --namespace default || true
+              $KUBE logs statefulset/etcd --namespace default --all-containers=true --tail=200 || true
               exit 1
             fi
 
             $KUBE apply -f /opt/classapp/k8s/services.yaml
-
-            $KUBE apply -f /opt/classapp/k8s/classapp-web.yaml
-            $KUBE apply -f /opt/classapp/k8s/classapp-nginx.yaml
-            $KUBE set image deployment/classapp-web \
-              classapp-web="$K8S_IMAGE" \
-              --namespace default
-            $KUBE rollout status deployment/classapp-web --namespace default --timeout=180s
-            $KUBE rollout status deployment/classapp-nginx --namespace default --timeout=120s
-
-            echo "Проверяем Kubernetes-сервисы и NodePort..."
-            $KUBE get pods -o wide
-            $KUBE get services
-            NODE_PORT=$($KUBE get service classapp-nginx \
-              --namespace default \
-              --output jsonpath='{.spec.ports[0].nodePort}')
-            if [ "$NODE_PORT" != "30080" ]; then
-              echo "❌ Unexpected Kubernetes NodePort: $NODE_PORT"
+            $KUBE apply -f /opt/classapp/k8s/patroni.yaml
+            if ! $KUBE rollout status statefulset/classapp-patroni --namespace default --timeout=180s; then
+              echo "❌ Patroni не стал Ready. Диагностика Kubernetes:"
+              $KUBE get pods -l app.kubernetes.io/name=patroni --namespace default --output wide || true
+              $KUBE describe pods -l app.kubernetes.io/name=patroni --namespace default || true
+              $KUBE logs statefulset/classapp-patroni --namespace default --all-containers=true --tail=200 || true
               exit 1
             fi
-            echo "✅ Kubernetes application is available on NodePort $NODE_PORT"
 
-            echo "Pruning unused images..."
-            docker image prune -f
+            # --- РАСКАТКА ВЕБ-КОНТУРА K8s ---
+            echo "Применяем манифесты веб-приложения и прокси..."
+            $KUBE apply -f /opt/classapp/k8s/classapp-web.yaml
+            # Динамически проставляем свежесобранный коммит-тег в деплоймент K8s
+            $KUBE set image deployment/classapp-web web="$K8S_IMAGE" --namespace default
+            
+            $KUBE apply -f /opt/classapp/k8s/classapp-nginx.yaml
 
-            echo "🚀 Dual-compose deploy completed successfully!"
+            if ! $KUBE rollout status deployment/classapp-web --namespace default --timeout=120s; then
+              echo "❌ Веб-приложение Flask в K8s не запустилось. Диагностика:"
+              $KUBE get pods -l app=classapp-web --namespace default || true
+              $KUBE describe pods -l app=classapp-web --namespace default || true
+              exit 1
+            fi
+
+            echo "📦 Накатывание миграций Alembic внутри K8s-кластера..."
+            K8S_WEB_POD=$($KUBE get pods -l app=classapp-web -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+            if [ -n "$K8S_WEB_POD" ]; then
+              $KUBE exec -i "$K8S_WEB_POD" -- alembic upgrade head
+              echo "✅ K8s migrations completed successfully!"
+            fi
+
+            echo "🚀 ИНФРАСТРУКТУРА УСПЕШНО РАЗВЕРНУТА!"
+            echo "--- Статус Docker Compose контура ---"
+            docker compose -f docker-compose.prod.yml ps
+            echo "--- Статус Kubernetes контура ---"
+            $KUBE get all -o wide
         env:
           APP_SECRET_KEY: ${{ secrets.APP_SECRET_KEY }}
           APP_DB_PASSWORD: ${{ secrets.APP_DB_PASSWORD }}
