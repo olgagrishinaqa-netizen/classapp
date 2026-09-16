@@ -138,6 +138,11 @@ jobs:
             echo "Starting logging stack..."
             docker compose -f docker-compose.logging.yml up -d
 
+            echo "Освобождаем место на image filesystem перед запуском K3s..."
+            docker image prune -af
+            docker builder prune -af || true
+            df -h / /var/lib/docker /var/lib/rancher 2>/dev/null || df -h
+
             echo "Применяем Kubernetes-манифесты..."
             echo "Удаляем завершившиеся старые Pod etcd..."
             $KUBE delete pod \
@@ -148,6 +153,12 @@ jobs:
             $KUBE apply -f /opt/classapp/k8s/etcd.yaml
             if ! $KUBE rollout status deployment/etcd --namespace default --timeout=120s; then
               echo "❌ etcd не стал Ready. Диагностика Kubernetes:"
+              echo "Taints ноды:"
+              $KUBE get nodes \
+                --output=custom-columns=NAME:.metadata.name,TAINTS:.spec.taints \
+                || true
+              echo "Состояние ноды:"
+              $KUBE describe nodes || true
               $KUBE get pods -l app.kubernetes.io/name=etcd \
                 --namespace default \
                 --output wide || true
