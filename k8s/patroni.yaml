@@ -88,6 +88,13 @@ spec:
         patroni-role: replica
     spec:
       serviceAccountName: classapp-patroni
+      tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: NoSchedule
       containers:
         - name: patroni
           image: bitnami/postgresql-ha:15.6.0-debian-11-r0

@@ -17,6 +17,13 @@ spec:
         app.kubernetes.io/name: classapp-web
         app.kubernetes.io/part-of: classapp
     spec:
+      tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: NoSchedule
       containers:
         - name: classapp-web
           image: ghcr.io/olgagrishinaqa-netizen/classapp:latest
