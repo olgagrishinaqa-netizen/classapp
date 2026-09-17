@@ -180,10 +180,14 @@ jobs:
             $KUBE get pods -l app.kubernetes.io/name=classapp-nginx --namespace default || true
 
             echo "📦 Накатывание миграций Alembic внутри K8s-кластера..."
+            set +u
             K8S_WEB_POD=$($KUBE get pods -l app=classapp-web -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-            if [ -n "$K8S_WEB_POD" ]; then
+            set -u
+            if [ "${K8S_WEB_POD:-}" != "" ]; then
               $KUBE exec -i "$K8S_WEB_POD" -- alembic upgrade head
               echo "✅ K8s migrations completed successfully!"
+            else
+              echo "⚠️ Под Flask в K8s ещё не появился, пропускаем Alembic upgrade до следующего цикла."
             fi
 
             echo "⏳ Дожидаемся завершения фонового запуска Docker Compose стеков..."
