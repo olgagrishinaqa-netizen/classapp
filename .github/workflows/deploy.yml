@@ -165,7 +165,7 @@ jobs:
             echo "Применяем манифесты веб-приложения и прокси..."
             $KUBE apply -f /opt/classapp/k8s/classapp-web.yaml
             # Динамически проставляем свежесобранный коммит-тег в деплоймент K8s
-            $KUBE set image deployment/classapp-web web="$K8S_IMAGE" --namespace default
+            $KUBE set image deployment/classapp-web classapp-web="$K8S_IMAGE" --namespace default
             
             $KUBE apply -f /opt/classapp/k8s/classapp-nginx.yaml
 
