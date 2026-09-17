@@ -172,12 +172,13 @@ jobs:
               echo "❌ etcd не стал Ready. Диагностика Kubernetes:"
               $KUBE get pods -l app.kubernetes.io/name=etcd --namespace default --output wide || true
               $KUBE describe pods -l app.kubernetes.io/name=etcd --namespace default || true
-              $KUBE logs statefulset/etcd --namespace default --all-containers=true --tail=200 || true
+              $KUBE logs deployment/etcd --namespace default --all-containers=true --tail=200 || true
               exit 1
             fi
 
             $KUBE apply -f /opt/classapp/k8s/services.yaml
             $KUBE apply -f /opt/classapp/k8s/patroni.yaml
+            $KUBE rollout restart statefulset/classapp-patroni --namespace default
             if ! $KUBE rollout status statefulset/classapp-patroni --namespace default --timeout=180s; then
               echo "❌ Patroni не стал Ready. Диагностика Kubernetes:"
               $KUBE get pods -l app.kubernetes.io/name=patroni --namespace default --output wide || true
