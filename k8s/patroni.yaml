@@ -20,6 +20,7 @@ rules:
       - ""
     resources:
       - pods
+      - pods/proxy
     verbs:
       - get
       - list
@@ -104,6 +105,8 @@ spec:
               value: patroni
             - name: POSTGRESQL_HA_ETCD_HOSTS
               value: etcd-service:2379
+            - name: PATRONI_ETCD_HOSTS
+              value: etcd-service:2379
             - name: POSTGRESQL_HA_PATRONI_SCOPE
               value: classapp-ha
             - name: POSTGRESQL_DATABASE
@@ -170,11 +173,18 @@ spec:
             - -ec
             - |
               while true; do
-                ROLE="$(wget -qO- http://127.0.0.1:8008 2>/dev/null | tr -d '\n' | sed -n 's/.*"role":"\([^"]*\)".*/\1/p')"
-                if [ "$ROLE" = "leader" ]; then
+                ROLE="$(kubectl get --raw "/api/v1/namespaces/${POD_NAMESPACE}/pods/${POD_NAME}:8008/proxy" 2>/dev/null | tr -d '\n' | sed -n 's/.*"role":"\([^"]*\)".*/\1/p')"
+                if [ -z "$ROLE" ]; then
+                  echo "role-labeler: patroni role is empty for pod ${POD_NAME}, retrying"
+                  sleep 10
+                  continue
+                fi
+                if [ "$ROLE" = "leader" ] || [ "$ROLE" = "primary" ] || [ "$ROLE" = "master" ]; then
                   kubectl label pod "$POD_NAME" -n "$POD_NAMESPACE" patroni-role=master --overwrite
-                elif [ "$ROLE" = "replica" ]; then
+                elif [ "$ROLE" = "replica" ] || [ "$ROLE" = "standby_leader" ]; then
                   kubectl label pod "$POD_NAME" -n "$POD_NAMESPACE" patroni-role=replica --overwrite
+                else
+                  echo "role-labeler: unsupported role '${ROLE}' for pod ${POD_NAME}, keeping current label"
                 fi
                 sleep 10
               done
