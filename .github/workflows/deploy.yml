@@ -194,10 +194,18 @@ jobs:
             wait "$COMPOSE_WEB_PID" "$COMPOSE_LOGGING_PID"
 
             echo "Проверяем доступность K8s NodePort через локальный health endpoint..."
-            if ! curl -fsS --max-time 15 http://127.0.0.1:30080/healthz >/dev/null; then
-              echo "❌ K8s web-контур недоступен по NodePort 30080"
-              exit 1
-            fi
+            for i in $(seq 1 20); do
+              if curl -fsS --max-time 10 http://127.0.0.1:30080/healthz >/dev/null; then
+                echo "✅ K8s web-контур доступен по NodePort 30080"
+                break
+              fi
+              if [ "$i" -eq 20 ]; then
+                echo "❌ K8s web-контур недоступен по NodePort 30080"
+                exit 1
+              fi
+              echo "Ждём readiness K8s web-контурa ($i/20)..."
+              sleep 3
+            done
 
             echo "🧹 ШАГ: Фоновая очистка диска хоста (запускается асинхронно, не задерживает релиз)..."
             (
