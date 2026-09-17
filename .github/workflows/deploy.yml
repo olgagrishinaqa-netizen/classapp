@@ -169,10 +169,10 @@ jobs:
             
             $KUBE apply -f /opt/classapp/k8s/classapp-nginx.yaml
 
-            if ! $KUBE rollout status deployment/classapp-web --namespace default --timeout=60s; then
+            if ! $KUBE rollout status deployment/classapp-web --namespace default --timeout=180s; then
               echo "❌ Веб-приложение Flask в K8s не запустилось. Диагностика:"
-              $KUBE get pods -l app=classapp-web --namespace default || true
-              $KUBE describe pods -l app=classapp-web --namespace default || true
+              $KUBE get pods -l app.kubernetes.io/name=classapp-web --namespace default || true
+              $KUBE describe pods -l app.kubernetes.io/name=classapp-web --namespace default || true
               exit 1
             fi
 
@@ -181,7 +181,7 @@ jobs:
 
             echo "📦 Накатывание миграций Alembic внутри K8s-кластера..."
             set +u
-            K8S_WEB_POD=$($KUBE get pods -l app=classapp-web -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+            K8S_WEB_POD=$($KUBE get pods -l app.kubernetes.io/name=classapp-web -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
             set -u
             if [ "${K8S_WEB_POD:-}" != "" ]; then
               $KUBE exec -i "$K8S_WEB_POD" -- alembic upgrade head
