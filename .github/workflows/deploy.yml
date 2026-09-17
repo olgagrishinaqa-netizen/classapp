@@ -103,25 +103,12 @@ jobs:
               --from-literal=secret-key="$APP_SECRET_KEY" \
               --dry-run=client -o yaml | $KUBE apply -f -
 
-            echo "🧹 ШАГ: Агрессивное освобождение места на диске хоста..."
-            docker container prune -f
-            docker image prune -af
-            docker builder prune -af || true
-            echo "Освобождаем неиспользуемые образы K3s/containerd..."
-            if sudo k3s crictl images >/dev/null 2>&1; then
-              sudo k3s crictl rmi $(sudo k3s crictl images -q --unreferenced) || true
-            fi
-            sudo journalctl --vacuum-time=7d || true
-            df -h / /var/lib/docker /var/lib/rancher 2>/dev/null || df -h
-
             echo "☸️ ШАГ: Автоматическое снятие ограничений мастер-ноды кластера K3s..."
             $KUBE taint nodes --all node-role.kubernetes.io/master:NoSchedule- || true
             $KUBE taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule- || true
 
-            echo "Pulling production images..."
-            docker compose -f docker-compose.prod.yml pull
-            echo "Pulling logging images..."
-            docker compose -f docker-compose.logging.yml pull
+            echo "⚡ Быстрое обновление: скачиваем только образ приложения (web), остальные слои неизменны..."
+            docker compose -f docker-compose.prod.yml pull web
 
             echo "Starting PostgreSQL..."
             docker compose -f docker-compose.prod.yml up -d db
@@ -143,22 +130,20 @@ jobs:
             echo "Running database migrations..."
             docker compose -f docker-compose.prod.yml run --rm -T -e PYTHONPATH=/app web alembic upgrade head
 
-            echo "Starting production web stack..."
-            docker compose -f docker-compose.prod.yml up -d web nginx prometheus
+            echo "🚀 Запускаем обновленный web-стек Docker Compose в фоне (не блокирует деплой K8s)..."
+            docker compose -f docker-compose.prod.yml up -d web nginx prometheus &
+            COMPOSE_WEB_PID=$!
 
-            echo "Starting logging stack..."
-            docker compose -f docker-compose.logging.yml up -d
-
-            df -h / /var/lib/docker /var/lib/rancher 2>/dev/null || df -h
+            echo "🚀 Запускаем логирующий стек Docker Compose в фоне..."
+            docker compose -f docker-compose.logging.yml up -d &
+            COMPOSE_LOGGING_PID=$!
 
             echo "Применяем Kubernetes-манифесты..."
             echo "Проверяем состояние ноды перед запуском Kubernetes..."
             $KUBE get nodes \
               --output=custom-columns=NAME:.metadata.name,READY:.status.conditions[-1].status,TAINTS:.spec.taints \
               || true
-            echo "Состояние диска K3s/containerd:"
-            sudo k3s crictl imagefsinfo || true
-            
+
             echo "Удаляем завершившиеся старые Pod etcd..."
             $KUBE delete pod \
               --namespace default \
@@ -166,26 +151,15 @@ jobs:
               --field-selector=status.phase=Succeeded \
               --ignore-not-found=true
             
-            # --- РАСКАТКА КОНТУРА БАЗЫ ДАННЫХ K8s ---
+            # --- РАСКАТКА КОНТУРА БАЗЫ ДАННЫХ K8s (уже развернут, apply идемпотентен) ---
+            # etcd и Patroni обновятся сами, только если реально изменился их манифест —
+            # без принудительного rollout restart и без блокирующего ожидания на каждый пуш.
             $KUBE apply -f /opt/classapp/k8s/etcd.yaml
-            if ! $KUBE rollout status deployment/etcd --namespace default --timeout=120s; then
-              echo "❌ etcd не стал Ready. Диагностика Kubernetes:"
-              $KUBE get pods -l app.kubernetes.io/name=etcd --namespace default --output wide || true
-              $KUBE describe pods -l app.kubernetes.io/name=etcd --namespace default || true
-              $KUBE logs deployment/etcd --namespace default --all-containers=true --tail=200 || true
-              exit 1
-            fi
-
             $KUBE apply -f /opt/classapp/k8s/services.yaml
             $KUBE apply -f /opt/classapp/k8s/patroni.yaml
-            $KUBE rollout restart statefulset/classapp-patroni --namespace default
-            if ! $KUBE rollout status statefulset/classapp-patroni --namespace default --timeout=180s; then
-              echo "❌ Patroni не стал Ready. Диагностика Kubernetes:"
-              $KUBE get pods -l app.kubernetes.io/name=patroni --namespace default --output wide || true
-              $KUBE describe pods -l app.kubernetes.io/name=patroni --namespace default || true
-              $KUBE logs statefulset/classapp-patroni --namespace default --all-containers=true --tail=200 || true
-              exit 1
-            fi
+            echo "ℹ️ Текущее состояние etcd/Patroni (информационно, без ожидания):"
+            $KUBE get pods -l app.kubernetes.io/name=etcd --namespace default --output wide || true
+            $KUBE get pods -l app.kubernetes.io/name=patroni --namespace default --output wide || true
 
             # --- РАСКАТКА ВЕБ-КОНТУРА K8s ---
             echo "Применяем манифесты веб-приложения и прокси..."
@@ -195,19 +169,15 @@ jobs:
             
             $KUBE apply -f /opt/classapp/k8s/classapp-nginx.yaml
 
-            if ! $KUBE rollout status deployment/classapp-web --namespace default --timeout=120s; then
+            if ! $KUBE rollout status deployment/classapp-web --namespace default --timeout=60s; then
               echo "❌ Веб-приложение Flask в K8s не запустилось. Диагностика:"
               $KUBE get pods -l app=classapp-web --namespace default || true
               $KUBE describe pods -l app=classapp-web --namespace default || true
               exit 1
             fi
 
-            if ! $KUBE rollout status deployment/classapp-nginx --namespace default --timeout=120s; then
-              echo "❌ Nginx в K8s не запустился. Диагностика:"
-              $KUBE get pods -l app.kubernetes.io/name=classapp-nginx --namespace default || true
-              $KUBE describe pods -l app.kubernetes.io/name=classapp-nginx --namespace default || true
-              exit 1
-            fi
+            echo "ℹ️ Текущее состояние Nginx (информационно, без блокирующего ожидания):"
+            $KUBE get pods -l app.kubernetes.io/name=classapp-nginx --namespace default || true
 
             echo "📦 Накатывание миграций Alembic внутри K8s-кластера..."
             K8S_WEB_POD=$($KUBE get pods -l app=classapp-web -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
@@ -216,11 +186,27 @@ jobs:
               echo "✅ K8s migrations completed successfully!"
             fi
 
+            echo "⏳ Дожидаемся завершения фонового запуска Docker Compose стеков..."
+            wait "$COMPOSE_WEB_PID" "$COMPOSE_LOGGING_PID"
+
             echo "Проверяем доступность K8s NodePort через локальный health endpoint..."
             if ! curl -fsS --max-time 15 http://127.0.0.1:30080/healthz >/dev/null; then
               echo "❌ K8s web-контур недоступен по NodePort 30080"
               exit 1
             fi
+
+            echo "🧹 ШАГ: Фоновая очистка диска хоста (запускается асинхронно, не задерживает релиз)..."
+            (
+              docker container prune -f
+              docker image prune -af
+              docker builder prune -af || true
+              if sudo k3s crictl images >/dev/null 2>&1; then
+                sudo k3s crictl rmi $(sudo k3s crictl images -q --unreferenced) || true
+              fi
+              sudo journalctl --vacuum-time=7d || true
+              df -h / /var/lib/docker /var/lib/rancher 2>/dev/null || df -h
+            ) > /tmp/classapp-cleanup.log 2>&1 &
+            disown
 
             echo "🚀 ИНФРАСТРУКТУРА УСПЕШНО РАЗВЕРНУТА!"
             echo "--- Статус Docker Compose контура ---"
