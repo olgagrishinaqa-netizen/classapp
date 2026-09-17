@@ -109,7 +109,7 @@ jobs:
             docker builder prune -af || true
             echo "Освобождаем неиспользуемые образы K3s/containerd..."
             if sudo k3s crictl images >/dev/null 2>&1; then
-              sudo k3s crictl rmi --prune || true
+              sudo k3s crictl rmi $(sudo k3s crictl images -q --unreferenced) || true
             fi
             sudo journalctl --vacuum-time=7d || true
             df -h / /var/lib/docker /var/lib/rancher 2>/dev/null || df -h
@@ -202,11 +202,24 @@ jobs:
               exit 1
             fi
 
+            if ! $KUBE rollout status deployment/classapp-nginx --namespace default --timeout=120s; then
+              echo "❌ Nginx в K8s не запустился. Диагностика:"
+              $KUBE get pods -l app.kubernetes.io/name=classapp-nginx --namespace default || true
+              $KUBE describe pods -l app.kubernetes.io/name=classapp-nginx --namespace default || true
+              exit 1
+            fi
+
             echo "📦 Накатывание миграций Alembic внутри K8s-кластера..."
             K8S_WEB_POD=$($KUBE get pods -l app=classapp-web -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
             if [ -n "$K8S_WEB_POD" ]; then
               $KUBE exec -i "$K8S_WEB_POD" -- alembic upgrade head
               echo "✅ K8s migrations completed successfully!"
+            fi
+
+            echo "Проверяем доступность K8s NodePort через локальный health endpoint..."
+            if ! curl -fsS --max-time 15 http://127.0.0.1:30080/healthz >/dev/null; then
+              echo "❌ K8s web-контур недоступен по NodePort 30080"
+              exit 1
             fi
 
             echo "🚀 ИНФРАСТРУКТУРА УСПЕШНО РАЗВЕРНУТА!"
