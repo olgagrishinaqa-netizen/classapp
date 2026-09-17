@@ -169,7 +169,7 @@ jobs:
             
             # --- РАСКАТКА КОНТУРА БАЗЫ ДАННЫХ K8s ---
             $KUBE apply -f /opt/classapp/k8s/etcd.yaml
-            if ! $KUBE rollout status statefulset/etcd --namespace default --timeout=120s; then
+            if ! $KUBE rollout status deployment/etcd --namespace default --timeout=120s; then
               echo "❌ etcd не стал Ready. Диагностика Kubernetes:"
               $KUBE get pods -l app.kubernetes.io/name=etcd --namespace default --output wide || true
               $KUBE describe pods -l app.kubernetes.io/name=etcd --namespace default || true
