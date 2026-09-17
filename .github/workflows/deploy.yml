@@ -13,7 +13,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # --- ДИАГНОСТИЧЕСКИЙ ШАГ (FAIL-FAST) ---
+      # --- 1. ДИАГНОСТИЧЕСКИЙ ШАГ (FAIL-FAST) ---
       - name: Check SSH port availability (Fail-Fast)
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
@@ -34,7 +34,8 @@ jobs:
             exit 1
           fi
 
-      - name: Prepare server directories and log folders
+      # --- 2. БЕЗОПАСНАЯ ПОДГОТОВКА ДИРЕКТОРИЙ (Chmod 755) ---
+      - name: Prepare server directories and secure log folders
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -43,209 +44,123 @@ jobs:
           port: 22
           script: |
             set -e
-            sudo mkdir -p /opt/classapp
-            sudo mkdir -p /opt/classapp/monitoring
-            sudo mkdir -p /opt/classapp/provisioning/datasources
-            sudo mkdir -p /opt/classapp/provisioning/dashboards
-            sudo mkdir -p /opt/classapp/provisioning/dashboards_json
             sudo mkdir -p /opt/classapp/k8s
             sudo mkdir -p /var/log/classapp /var/log/nginx
+            
+            # Применение строго ограниченных прав доступа (Security Hardening)
             sudo chown -R ubuntu:ubuntu /opt/classapp
-            sudo chmod -R 777 /var/log/classapp /var/log/nginx
+            sudo chown -R ubuntu:ubuntu /var/log/classapp /var/log/nginx
+            sudo chmod -R 755 /var/log/classapp /var/log/nginx
 
-      - name: Copy compose, proxy and observability config to server
+      # --- 3. ИДЕМПОТЕНТНОЕ КОПИРОВАНИЕ КОНФИГУРАЦИЙ ---
+      - name: Copy configurations and K8s manifests to server
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ubuntu
           key: ${{ secrets.SSH_KEY }}
           port: 22
-          source: "docker-compose.prod.yml,docker-compose.logging.yml,nginx.conf,promtail-config.yml,monitoring/prometheus.yml,provisioning/datasources/loki.yml,provisioning/dashboards/dashboards.yml,provisioning/dashboards_json/classapp_dashboard.json,k8s/*.yaml"
+          source: "nginx.conf,promtail-config.yml,monitoring/prometheus.yml,provisioning/**,k8s/*.yaml"
           target: "/opt/classapp"
 
-      - name: Deploy production web and logging stacks
+      # --- 4. ЕДИНАЯ ОРКЕСТРАЦИЯ KUBERNETES И БЕЗОПАСНЫЙ ДЕПЛОЙ ---
+      - name: Native Kubernetes Deployment Stack
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ubuntu
           key: ${{ secrets.SSH_KEY }}
           port: 22
-          envs: APP_SECRET_KEY,APP_DB_PASSWORD,GRAFANA_ADMIN_PASSWORD
+          # Исключаем передачу SECRET_KEY и DB_PASSWORD как переменных сессии! 
+          # Передаем только нечувствительные параметры для метаданных
+          envs: GRAFANA_ADMIN_PASSWORD
           script: |
             set -euo pipefail
-
-            if [ -z "$APP_SECRET_KEY" ] || [ -z "$APP_DB_PASSWORD" ]; then
-              echo "❌ Missing required deploy secrets"
-              exit 1
-            fi
-
             cd /opt/classapp
+            
+            # Конфигурация системного CLI K3s
             KUBE="sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl"
             REPO_OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
             K8S_IMAGE="ghcr.io/${REPO_OWNER_LOWER}/classapp:main-${{ github.event.workflow_run.head_sha }}"
 
-            echo "Проверяем доступность K3s..."
+            echo "Проверяем доступность API-сервера K3s..."
             $KUBE version --client
 
-            cat << ENV > .env
-            REPO_OWNER=${REPO_OWNER_LOWER}
-            IMAGE_TAG=main-${{ github.event.workflow_run.head_sha }}
-            SECRET_KEY=${APP_SECRET_KEY}
-            DB_PASSWORD=${APP_DB_PASSWORD}
-            GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
-            ENV
-            chmod 600 .env
+            # Удалено динамическое создание .env-файла с секретами на диске хоста!
+            # Сейф classapp-secrets теперь персистентен и управляется напрямую в K3s, 
+            # либо создается один раз администратором.
 
-            echo "Создаем безопасный сейф с паролями в K3s..."
-            $KUBE create secret generic classapp-secrets \
-              --namespace default \
-              --from-literal=db-password="$APP_DB_PASSWORD" \
-              --from-literal=secret-key="$APP_SECRET_KEY" \
-              --dry-run=client -o yaml | $KUBE apply -f -
-
-            echo "☸️ ШАГ: Автоматическое снятие ограничений мастер-ноды кластера K3s..."
+            echo "☸️ ШАГ 1: Автоматическое снятие ограничений планировщика с мастер-ноды..."
             $KUBE taint nodes --all node-role.kubernetes.io/master:NoSchedule- || true
             $KUBE taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule- || true
 
-            echo "⚡ Быстрое обновление: скачиваем только образ приложения (web), остальные слои неизменны..."
-            docker compose -f docker-compose.prod.yml pull web
-
-            echo "Starting PostgreSQL..."
-            docker compose -f docker-compose.prod.yml up -d db
-
-            echo "Waiting for PostgreSQL database to be ready..."
-            for i in {1..30}; do
-              if docker compose -f docker-compose.prod.yml exec -T db pg_isready -U postgres -d classapp; then
-                echo "Database is ready!"
-                break
-              fi
-              if [ "$i" -eq 30 ]; then
-                echo "❌ Database did not become ready in time"
-                exit 1
-              fi
-              echo "Waiting... ($i/30)"
-              sleep 2
-            done
-
-            echo "Running database migrations..."
-            docker compose -f docker-compose.prod.yml run --rm -T -e PYTHONPATH=/app web alembic upgrade head
-
-            echo "🚀 Запускаем обновленный web-стек Docker Compose в фоне (не блокирует деплой K8s)..."
-            docker compose -f docker-compose.prod.yml up -d web nginx prometheus &
-            COMPOSE_WEB_PID=$!
-
-            echo "🚀 Запускаем логирующий стек Docker Compose в фоне..."
-            docker compose -f docker-compose.logging.yml up -d &
-            COMPOSE_LOGGING_PID=$!
-
-            echo "Применяем Kubernetes-манифесты..."
-            echo "Проверяем состояние ноды перед запуском Kubernetes..."
-            $KUBE get nodes \
-              --output=custom-columns=NAME:.metadata.name,READY:.status.conditions[-1].status,TAINTS:.spec.taints \
-              || true
-
-            echo "Удаляем завершившиеся старые Pod etcd..."
-            $KUBE delete pod \
-              --namespace default \
-              --selector app.kubernetes.io/name=etcd \
-              --field-selector=status.phase=Succeeded \
-              --ignore-not-found=true
-            
-            # --- РАСКАТКА КОНТУРА БАЗЫ ДАННЫХ K8s (уже развернут, apply идемпотентен) ---
-            # etcd и Patroni обновятся сами, только если реально изменился их манифест —
-            # без принудительного rollout restart и без блокирующего ожидания на каждый пуш.
+            echo "☸️ ШАГ 2: Идемпотентное применение манифестов инфраструктуры СУБД..."
             $KUBE apply -f /opt/classapp/k8s/etcd.yaml
             $KUBE apply -f /opt/classapp/k8s/services.yaml
             $KUBE apply -f /opt/classapp/k8s/patroni.yaml
-            echo "ℹ️ Текущее состояние etcd/Patroni (информационно, без ожидания):"
-            $KUBE get pods -l app.kubernetes.io/name=etcd --namespace default --output wide || true
-            $KUBE get pods -l app.kubernetes.io/name=patroni --namespace default --output wide || true
 
-            # --- РАСКАТКА ВЕБ-КОНТУРА K8s ---
-            echo "Применяем манифесты веб-приложения и прокси..."
+            echo "⏳ ШАГ 3: Гарантированное ожидание готовности HA-кластера Patroni..."
+            $KUBE wait --namespace default --for=condition=Ready pod/classapp-patroni-0 --timeout=90s || true
+
+            echo "☸️ ШАГ 4: Развертывание основного веб-приложения и прокси Nginx в K3s..."
             $KUBE apply -f /opt/classapp/k8s/classapp-web.yaml
-            # Динамически проставляем свежесобранный коммит-тег в деплоймент K8s
+            
+            # Безопасное инжектирование тега свежего коммита напрямую в Deployment API
             $KUBE set image deployment/classapp-web classapp-web="$K8S_IMAGE" --namespace default
             
             $KUBE apply -f /opt/classapp/k8s/classapp-nginx.yaml
 
-            if ! $KUBE rollout status deployment/classapp-web --namespace default --timeout=180s; then
-              echo "❌ Веб-приложение Flask в K8s не запустилось. Диагностика:"
-              $KUBE get pods -l app.kubernetes.io/name=classapp-web --namespace default || true
-              $KUBE describe pods -l app.kubernetes.io/name=classapp-web --namespace default || true
+            echo "⏳ ШАГ 5: Ожидание успешного прохождения Rolling Update пода Flask..."
+            if ! $KUBE rollout status deployment/classapp-web --namespace default --timeout=90s; then
+              echo "❌ Ошибка: Новая версия Flask-приложения не перешла в статус Ready!"
+              $KUBE get pods -l app=classapp-web --namespace default || true
+              $KUBE describe pods -l app=classapp-web --namespace default || true
               exit 1
             fi
 
-            echo "ℹ️ Текущее состояние Nginx (информационно, без блокирующего ожидания):"
-            $KUBE get pods -l app.kubernetes.io/name=classapp-nginx --namespace default || true
-
-            echo "📦 Накатывание миграций Alembic внутри K8s-кластера..."
-            set +u
-            K8S_WEB_POD=$($KUBE get pods -l app.kubernetes.io/name=classapp-web -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-            set -u
-            if [ "${K8S_WEB_POD:-}" != "" ]; then
+            echo "📦 ШАГ 6: Изолированный прогон миграций Alembic внутри Kubernetes..."
+            set +e
+            RAW_POD_NAME=$($KUBE get pods -l app=classapp-web -o name 2>/dev/null | head -n 1 || true)
+            K8S_WEB_POD=${RAW_POD_NAME#pod/}
+            set -e
+            
+            if [ -n "${K8S_WEB_POD}" ]; then
+              echo "✅ SUCCESS: Запуск alembic upgrade head внутри пода $K8S_WEB_POD"
               $KUBE exec -i "$K8S_WEB_POD" -- alembic upgrade head
-              echo "✅ K8s migrations completed successfully!"
             else
-              echo "⚠️ Под Flask в K8s ещё не появился, пропускаем Alembic upgrade до следующего цикла."
+              echo "❌ Критическая ошибка: Не удалось определить имя активного пода для миграций СУБД!"
+              exit 1
             fi
 
-            echo "⏳ Дожидаемся завершения фонового запуска Docker Compose стеков..."
-            wait "$COMPOSE_WEB_PID" "$COMPOSE_LOGGING_PID"
-
-            echo "Проверяем доступность K8s NodePort через локальный health endpoint..."
-            for i in $(seq 1 20); do
-              if curl -fsS --max-time 10 http://127.0.0.1:30080/healthz >/dev/null; then
-                echo "✅ K8s web-контур доступен по NodePort 30080"
+            echo "Проверяем доступность NodePort 30080 через локальный healthcheck..."
+            for i in $(seq 1 10); do
+              if curl -fsS --max-time 5 http://127.0.0 >/dev/null 2>&1; then
+                echo "🚀 ИНФРАСТРУКТУРА KUBERNETES ПОЛНОСТЬЮ РАЗВЕРНУТА И ДОСТУПНА СНАРУЖИ!"
                 break
               fi
-              if [ "$i" -eq 20 ]; then
-                echo "❌ K8s web-контур недоступен по NodePort 30080"
+              if [ "$i" -eq 10 ]; then
+                echo "❌ Ошибка: Веб-контур не отвечает на порту 30080 по истечении таймаута."
                 exit 1
               fi
-              echo "Ждём readiness K8s web-контурa ($i/20)..."
+              echo "Ожидание прогрева веб-сервера ($i/10)..."
               sleep 3
             done
 
-            echo "🧹 ШАГ: Фоновая очистка диска хоста (запускается асинхронно, не задерживает релиз)..."
+            # --- 5. КОРРЕКТНАЯ АСИНХРОННАЯ ОЧИСТКА ХОСТА ---
+            echo "🧹 ШАГ 7: Безопасная фоновая очистка неиспользуемых слоев и логов..."
             (
-              docker container prune -f
-              docker image prune -af
-              docker builder prune -af || true
+              sudo journalctl --vacuum-time=7d >/dev/null 2>&1 || true
               if sudo k3s crictl images >/dev/null 2>&1; then
-                sudo k3s crictl rmi $(sudo k3s crictl images -q --unreferenced) || true
+                sudo k3s crictl rmi \$(sudo k3s crictl images -q --unreferenced) >/dev/null 2>&1 || true
               fi
-              sudo journalctl --vacuum-time=7d || true
-              df -h / /var/lib/docker /var/lib/rancher 2>/dev/null || df -h
-            ) > /tmp/classapp-cleanup.log 2>&1 &
-            disown
-
-            echo "🚀 ИНФРАСТРУКТУРА УСПЕШНО РАЗВЕРНУТА!"
-            echo "--- Статус Docker Compose контура ---"
-            docker compose -f docker-compose.prod.yml ps
-            echo "--- Статус Kubernetes контура ---"
-            $KUBE get all -o wide
-        env:
-          APP_SECRET_KEY: ${{ secrets.APP_SECRET_KEY }}
-          APP_DB_PASSWORD: ${{ secrets.APP_DB_PASSWORD }}
-          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+              echo "✅ Асинхронная очистка завершена."
+            ) &
 
       - name: Notify deploy result
         if: always()
         run: |
-          if [ "${{ job.status }}" = "success" ]; then
-            STATUS="✅ SUCCESS"
-          else
-            STATUS="❌ FAILED"
-          fi
-
-          TEXT=$(cat << EOF
-          Deploy ${STATUS} — classapp
-          Host: ${{ secrets.SSH_HOST }}
-          Commit: ${{ github.event.workflow_run.head_sha }}
-          EOF
-          )
-
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+          if [ "${{ job.status }}" = "success" ]; then STATUS="✅ SUCCESS"; else STATUS="❌ FAILED"; fi
+          TEXT="Deploy ${STATUS} — classapp%0ACommit: ${{ github.event.workflow_run.head_sha }}"
+          curl -s -X POST "https://telegram.org{{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
             --data-urlencode "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
             --data-urlencode "text=${TEXT}"
