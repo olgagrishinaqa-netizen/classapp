@@ -72,5 +72,8 @@ def test_kubernetes_manifests_use_component_database_env():
 def test_deploy_workflow_waits_for_db_master_endpoints():
     workflow_text = (ROOT / ".github/workflows/deploy.yml").read_text()
 
-    assert "get endpoints classapp-db-master" in workflow_text
-    assert "Ожидание появления endpoint у сервиса classapp-db-master" in workflow_text
+    assert "classapp-db-master" in workflow_text
+    assert "get endpoints" in workflow_text
+    assert "DB_MASTER_ENDPOINTS" in workflow_text
+    assert "get service classapp-db-master" in workflow_text
+    assert "get pods -l app.kubernetes.io/name=patroni" in workflow_text
