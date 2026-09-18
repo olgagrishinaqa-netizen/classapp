@@ -10,30 +10,29 @@ Exception: Neither srv, hosts, host nor url are defined in etcd section of confi
 ```
 
 **Причина:**
-Patroni не может найти конфигурацию для подключения к etcd. Это может произойти, если:
-- ConfigMap `patroni-config` не применён в кластер
-- Переменная окружения `PATRONI_CONFIG_TEMPLATE` не установлена
-- ConfigMap подмонтирован некорректно
+Patroni (образ Zalando Spilo) не может найти конфигурацию для подключения к etcd.
+Обычно это значит, что переменная окружения `PATRONI_ETCD3_HOSTS` не установлена
+или под получил её пустой из-за ошибки в манифесте/секрете.
 
 **Решение:**
-1. Проверьте наличие ConfigMap:
+1. Проверьте переменные окружения в поде:
 ```bash
-kubectl get configmap patroni-config
-kubectl get configmap patroni-config -o yaml | grep -A 10 "etcd:"
+kubectl exec -it pod/classapp-patroni-0 -c patroni -- env | grep PATRONI_ETCD
 ```
 
-2. Проверьте, что pod имеет доступ к ConfigMap:
+2. Убедитесь, что `PATRONI_SCOPE` и `PATRONI_NAMESPACE` **одинаковы** на всех
+   подах StatefulSet — иначе новый под создаст отдельный кластер в etcd вместо
+   присоединения к существующему мастеру (split-brain):
 ```bash
-kubectl exec -it pod/classapp-patroni-0 -- ls -la /etc/patroni/
-kubectl exec -it pod/classapp-patroni-0 -- cat /etc/patroni/patroni.yaml
+kubectl get pods -l app.kubernetes.io/name=patroni -o jsonpath='{range .items[*]}{.metadata.name}{": "}{.spec.containers[0].env[?(@.name=="PATRONI_SCOPE")].value}{" / "}{.spec.containers[0].env[?(@.name=="PATRONI_NAMESPACE")].value}{"\n"}{end}'
 ```
 
-3. Проверьте переменные окружения:
+3. Проверьте доступность etcd-сервиса:
 ```bash
-kubectl exec -it pod/classapp-patroni-0 -- env | grep PATRONI_CONFIG
+kubectl exec -it pod/classapp-patroni-0 -c patroni -- nc -zv etcd-service 2379
 ```
 
-4. Если ConfigMap отсутствует, примените манифест:
+4. Если манифест изменился, переприменените его:
 ```bash
 kubectl apply -f k8s/patroni.yaml
 ```
@@ -48,24 +47,28 @@ classapp-patroni-1   0/2     ImagePullBackOff   1 (22h ago)   37h
 ```
 
 **Причина:**
-Образ PostgreSQL-HA недоступен на registry. Обычно это происходит с:
+Образ PostgreSQL-HA недоступен на registry. Это неоднократно происходило с
+образами Bitnami (Legacy) из-за архивации/rate-limit registry:
 - `bitnami/postgresql-ha:15.6.0-debian-11-r0` (устаревший, удалён)
-- Сетевые проблемы при подключении к registry
+- `bitnamilegacy/postgresql-ha:15.8.0-debian-12-r22` (тоже периодически недоступен)
 
 **Решение:**
-1. Используйте более новый образ из bitnamilegacy registry:
+Начиная с текущей версии манифеста используется образ **Zalando Spilo**
+(`registry.opensource.zalan.do/acid/spilo-15:3.0-p1`) — это надежный, широко
+используемый в продакшене образ (основа Zalando Postgres Operator), который не
+зависит от нестабильного bitnamilegacy registry:
 ```yaml
 # В k8s/patroni.yaml:
-image: bitnamilegacy/postgresql-ha:15.8.0-debian-12-r22
-imagePullPolicy: IfNotPresent  # Избегайте переполнения сети
+image: registry.opensource.zalan.do/acid/spilo-15:3.0-p1
+imagePullPolicy: IfNotPresent
 ```
 
-2. Проверьте доступность образа:
+1. Проверьте доступность образа на ноде:
 ```bash
-crictl pull bitnamilegacy/postgresql-ha:15.8.0-debian-12-r22  # на ноде
+sudo k3s crictl pull registry.opensource.zalan.do/acid/spilo-15:3.0-p1
 ```
 
-3. Если вы используете приватный registry, убедитесь, что ImagePullSecret правильно настроен:
+2. Если вы используете приватный registry, убедитесь, что ImagePullSecret правильно настроен:
 ```bash
 kubectl get secrets -o name | grep -i docker
 ```
@@ -107,6 +110,46 @@ kubectl get pod classapp-patroni-0 -o yaml | grep -A 20 "readinessProbe:"
 ```bash
 kubectl describe node | grep -A 5 "Allocated resources"
 ```
+
+---
+
+### 3.1. StatefulSet "застрял": pod-0 работает на старом образе, pod-1 не может обновиться
+
+**Симптомы:**
+```
+classapp-patroni-0   1/1   Running                 ...   controller-revision-hash=classapp-patroni-84964f97ff
+classapp-patroni-1   0/2   Init:ImagePullBackOff   ...   controller-revision-hash=classapp-patroni-5dc449c8f
+```
+Два pod'а с разными `controller-revision-hash` — значит, StatefulSet обновляет
+поды по одному, начиная со старшего ordinal, и не переходит к следующему, пока
+текущий не станет Ready.
+
+**Причина:**
+`updateStrategy: RollingUpdate` обновляет pod'ы по убыванию номера (сначала
+`-1`, потом `-0`). Если `classapp-patroni-1` не может стартовать (например,
+`ImagePullBackOff`), контроллер никогда не тронет `classapp-patroni-0` — тот
+остаётся на старой версии манифеста/образа сколь угодно долго.
+
+**Решение:**
+1. Сначала устраните первопричину (недоступный образ, ошибка конфигурации) —
+   см. пункты выше. После того как `classapp-patroni-1` станет `1/2` → `2/2`
+   Ready, обновление автоматически продолжится и pod-0 будет пересоздан.
+
+2. Проверить прогресс:
+```bash
+kubectl get pods -l app.kubernetes.io/name=patroni -w
+kubectl rollout status statefulset/classapp-patroni --timeout=180s
+```
+
+3. Если нужно принудительно пересоздать зависший старый pod (например, для
+   диагностики), удалите его вручную — StatefulSet пересоздаст его с новым
+   revision:
+```bash
+kubectl delete pod classapp-patroni-0
+```
+   ⚠️ Делайте это только когда `classapp-patroni-1` уже здоров (Ready) и
+   является репликой/мастером — иначе кластер на короткое время останется
+   без единого работающего пода.
 
 ---
 
@@ -234,6 +277,8 @@ kubectl get job classapp-migrate
 - Migration Job ждёт, что БД будет готова (pg_isready)
 - classapp-db-master endpoints пусты (см. проблему #4)
 - Secret `classapp-secrets` не существует
+- БД `classapp` ещё не создана (актуально для образа Spilo — он не создаёт
+  прикладную БД автоматически, в отличие от bitnami-образов)
 
 **Решение:**
 1. Проверьте статус Job:
@@ -258,6 +303,13 @@ kubectl get secret classapp-secrets -o yaml
 kubectl create secret generic classapp-secrets \
   --from-literal=db-password='CHANGE_ME' \
   --from-literal=secret-key='CHANGE_ME'
+```
+
+5. Проверьте, что БД `classapp` существует (initContainer `db-ready-check`
+   в `k8s/migrate-job.yaml` создаёт её автоматически, но можно проверить вручную):
+```bash
+kubectl exec -it classapp-patroni-0 -c patroni -- \
+  psql -U postgres -c "\l" | grep classapp
 ```
 
 5. Запустите Job снова после устранения проблем:

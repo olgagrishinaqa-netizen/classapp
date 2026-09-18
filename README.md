@@ -105,27 +105,44 @@ workers. Секрет `k3s_token` рекомендуется хранить в A
 
 В манифесте `k8s/patroni.yaml` определены:
 
-- **ConfigMap `patroni-config`**: содержит явную конфигурацию Patroni с секцией etcd
+- **Образ Patroni**: `registry.opensource.zalan.do/acid/spilo-15:3.0-p1` (Zalando Spilo).
+  От образов `bitnami(legacy)/postgresql-ha` пришлось отказаться — они несколько
+  раз подряд оказывались недоступны для pull (архивный registry, устаревшие теги,
+  rate-limit), что блокировало rollout всего StatefulSet. Spilo — проверенный,
+  широко используемый образ (используется Zalando Postgres Operator), который
+  надежно стартует и не требует кастомных initContainer/ConfigMap для etcd.
+
+- **etcd-конфигурация через переменные окружения** (не ConfigMap):
   ```yaml
-  etcd:
-    hosts:
-      - etcd-service:2379
+  env:
+    - name: PATRONI_SCOPE
+      value: classapp-ha
+    - name: PATRONI_NAMESPACE
+      value: default
+    - name: PATRONI_ETCD3_HOSTS
+      value: etcd-service:2379
   ```
-  Переменная окружения `PATRONI_CONFIG_TEMPLATE=/etc/patroni/patroni.yaml` 
-  указывает Patroni использовать этот конфиг.
+  `PATRONI_SCOPE` и `PATRONI_NAMESPACE` должны быть одинаковыми на всех подах
+  кластера — иначе новый под создаст в etcd отдельный "остров" вместо того,
+  чтобы присоединиться к существующему мастеру (split-brain).
 
 - **etcd Deployment** (`k8s/etcd.yaml`): однопроцессный etcd для координации HA-кластера.
   Service `etcd-service:2379` доступен для Patroni pods.
 
 - **Patroni StatefulSet** (2 реплики): каждый pod имеет:
-  - initContainer `fix-data-permissions` для установки владельца `/data` (uid 1001)
-  - securityContext `fsGroup: 1001` для корректных прав доступа
   - readinessProbe + livenessProbe с `initialDelaySeconds: 60-90` для ожидания инициализации БД
   - Два Service: `classapp-db-master` (для записи) и `classapp-db-replica` (для чтения)
+  - Spilo сам управляет правами на `/data`, поэтому дополнительные initContainer
+    или `fsGroup` не требуются.
 
 - **role-labeler sidecar**: периодически запрашивает API Patroni и помечает pod 
   label `patroni-role=master` или `patroni-role=replica` для правильной маршрутизации 
   трафика через Service.
+
+- **Создание прикладной БД `classapp`**: в отличие от bitnami-образа, Spilo не
+  создаёт дополнительную БД автоматически из переменных окружения. Поэтому
+  `k8s/migrate-job.yaml` перед запуском Alembic идемпотентно выполняет
+  `CREATE DATABASE classapp`, если она ещё не существует.
 
 Проверка готовности Patroni:
 ```bash

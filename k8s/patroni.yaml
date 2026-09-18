@@ -67,47 +67,6 @@ spec:
       targetPort: patroni-api
       protocol: TCP
 ---
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: patroni-config
-  namespace: default
-  labels:
-    app.kubernetes.io/name: patroni
-    app.kubernetes.io/part-of: classapp
-data:
-  patroni.yaml: |
-    scope: classapp-ha
-    namespace: /classapp-ha/
-    name: ${POD_NAME}
-    restapi:
-      listen: 0.0.0.0:8008
-      connect_address: ${POD_NAME}.classapp-patroni.default.svc.cluster.local:8008
-    etcd:
-      hosts:
-        - etcd-service:2379
-    postgresql:
-      data_dir: /data/postgresql
-      pgpass: /tmp/pgpass
-      use_pg_rewind: true
-      callbacks:
-        on_start: /etc/patroni/on_start.sh
-        on_stop: /etc/patroni/on_stop.sh
-        on_reload: /etc/patroni/on_reload.sh
-        on_role_change: /etc/patroni/on_role_change.sh
-      parameters:
-        max_connections: 100
-        shared_buffers: 256MB
-        effective_cache_size: 1GB
-        work_mem: 4MB
-        checkpoint_completion_target: 0.9
-        wal_buffers: 16MB
-        default_statistics_target: 100
-        random_page_cost: 1.1
-        effective_io_concurrency: 200
-        min_wal_size: 1GB
-        max_wal_size: 4GB
----
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -133,11 +92,6 @@ spec:
         patroni-role: replica
     spec:
       serviceAccountName: classapp-patroni
-      # fsGroup гарантирует, что emptyDir /data монтируется с правами на запись
-      # для непривилегированного пользователя postgres (uid 1001) внутри
-      # bitnami-образа, иначе первичная инициализация БД падает с Permission denied.
-      securityContext:
-        fsGroup: 1001
       tolerations:
       - key: node-role.kubernetes.io/control-plane
         operator: Exists
@@ -145,62 +99,44 @@ spec:
       - key: node-role.kubernetes.io/master
         operator: Exists
         effect: NoSchedule
-      # Гарантированно выставляет владельца/права на volume до старта Patroni,
-      # даже если fsGroup не применяется драйвером volume (emptyDir на некоторых
-      # CSI/runtime это игнорирует).
-      initContainers:
-        - name: fix-data-permissions
-          image: bitnamilegacy/postgresql-ha:15.8.0-debian-12-r22
-          imagePullPolicy: IfNotPresent
-          command:
-            - /bin/sh
-            - -c
-            - |
-              mkdir -p /data
-              chown -R 1001:1001 /data
-              chmod 0700 /data
-          securityContext:
-            runAsUser: 0
-          volumeMounts:
-            - name: patroni-data
-              mountPath: /data
-          resources:
-            requests:
-              memory: 32Mi
-            limits:
-              memory: 64Mi
       containers:
         - name: patroni
-          image: bitnamilegacy/postgresql-ha:15.8.0-debian-12-r22
+          # ВАЖНО: используем тот же образ Zalando Spilo, что уже стабильно
+          # работает в кластере (classapp-patroni-0 без единого сбоя 40+ часов).
+          # Bitnami legacy-образы (bitnamilegacy/postgresql-ha) неоднократно
+          # оказывались недоступны для pull (архивный registry, rate-limit),
+          # что блокировало rollout всего StatefulSet. Spilo уже закэширован
+          # на ноде и не требует сетевого pull.
+          image: registry.opensource.zalan.do/acid/spilo-15:3.0-p1
           imagePullPolicy: IfNotPresent
           env:
-            - name: POSTGRESQL_HA_MODE
-              value: patroni
-            - name: POSTGRESQL_HA_ETCD_HOSTS
-              value: etcd-service:2379
-            - name: PATRONI_ETCD_HOSTS
-              value: etcd-service:2379
-            - name: POSTGRESQL_HA_PATRONI_SCOPE
+            # scope/namespace ДОЛЖНЫ точно совпадать со значениями, под
+            # которыми уже существующий master (classapp-patroni-0)
+            # зарегистрирован в etcd, иначе новый под создаст отдельный
+            # "остров" в DCS и никогда не станет репликой существующего
+            # мастера (split-brain).
+            - name: PATRONI_SCOPE
               value: classapp-ha
-            - name: POSTGRESQL_DATABASE
-              value: classapp
-            - name: POSTGRESQL_USERNAME
-              value: postgres
-            - name: POSTGRESQL_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: classapp-secrets
-                  key: db-password
-            - name: POSTGRESQL_POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: classapp-secrets
-                  key: db-password
+            - name: PATRONI_NAMESPACE
+              value: default
+            - name: PATRONI_ETCD3_HOSTS
+              value: etcd-service:2379
+            - name: PATRONI_POSTGRESQL_DATA_DIR
+              value: /data/patroni
             - name: PATRONI_SUPERUSER_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: classapp-secrets
                   key: db-password
+            - name: PGUSER_SUPERUSER
+              value: postgres
+            - name: PGPASSWORD_SUPERUSER
+              valueFrom:
+                secretKeyRef:
+                  name: classapp-secrets
+                  key: db-password
+            - name: PATRONI_REPLICATION_USERNAME
+              value: standby
             - name: PATRONI_REPLICATION_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -214,11 +150,6 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
-            # Явно указываем Patroni использовать конфиг из ConfigMap
-            - name: PATRONI_CONFIG_TEMPLATE
-              value: /etc/patroni/patroni.yaml
-            - name: PATRONI_POSTGRESQL_DATA_DIR
-              value: /data/postgresql
           ports:
             - name: postgresql
               containerPort: 5432
@@ -229,8 +160,6 @@ spec:
           volumeMounts:
             - name: patroni-data
               mountPath: /data
-            - name: patroni-config
-              mountPath: /etc/patroni
           # Первичная инициализация БД (initdb + запуск Patroni/etcd handshake)
           # может занимать до пары минут на слабых VM, поэтому initialDelaySeconds
           # достаточно велик, чтобы не убивать/не размечать pod NotReady раньше времени.
@@ -296,6 +225,3 @@ spec:
       volumes:
         - name: patroni-data
           emptyDir: {}
-        - name: patroni-config
-          configMap:
-            name: patroni-config
