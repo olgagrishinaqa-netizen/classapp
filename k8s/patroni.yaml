@@ -173,7 +173,8 @@ spec:
             - -ec
             - |
               while true; do
-                ROLE="$(kubectl get --raw "/api/v1/namespaces/${POD_NAMESPACE}/pods/${POD_NAME}:8008/proxy" 2>/dev/null | tr -d '\n' | sed -n 's/.*"role":"\([^"]*\)".*/\1/p')"
+                RESPONSE="$(kubectl get --raw "/api/v1/namespaces/${POD_NAMESPACE}/pods/${POD_NAME}:8008/proxy/" 2>/dev/null || true)"
+                ROLE="$(printf '%s' "$RESPONSE" | tr -d '\n' | sed -n 's/.*"role"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
                 if [ -z "$ROLE" ]; then
                   echo "role-labeler: patroni role is empty for pod ${POD_NAME}, retrying"
                   sleep 10
