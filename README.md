@@ -141,6 +141,11 @@ workers. Секрет `k3s_token` рекомендуется хранить в A
   label `patroni-role=master` или `patroni-role=replica` для правильной маршрутизации 
   трафика через Service.
 
+- **RBAC для Kubernetes API**: ServiceAccount `classapp-patroni` должен иметь доступ
+  к `pods`, `pods/proxy`, `endpoints` и `services` для корректного leader/replica
+  discovery и patch endpoint objects. Без этого Patroni запустит leader, но второй
+  pod не сможет корректно присоединиться.
+
 - **Создание прикладной БД `classapp`**: в отличие от bitnami-образа, Spilo не
   создаёт дополнительную БД автоматически из переменных окружения. Поэтому
   `k8s/migrate-job.yaml` перед запуском Alembic идемпотентно выполняет

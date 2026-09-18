@@ -21,6 +21,8 @@ rules:
     resources:
       - pods
       - pods/proxy
+      - endpoints
+      - services
     verbs:
       - get
       - list
