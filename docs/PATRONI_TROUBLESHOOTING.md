@@ -31,11 +31,13 @@ kubectl exec -it pod/classapp-patroni-0 -c patroni -- env | grep PATRONI_ETCD
    Должна быть установлена именно `ETCD_HOSTS=etcd-service:2379`
    (а не `PATRONI_ETCD_HOSTS` или `PATRONI_ETCD3_HOSTS`).
 
-2. Убедитесь, что `PATRONI_SCOPE` и `PATRONI_NAMESPACE` **одинаковы** на всех
-   подах StatefulSet — иначе новый под создаст отдельный кластер в etcd вместо
-   присоединения к существующему мастеру (split-brain):
+2. Убедитесь, что `SCOPE` и `NAMESPACE` **одинаковы** на всех подах StatefulSet —
+   иначе новый под создаст отдельный кластер в etcd вместо присоединения к
+   существующему мастеру (split-brain). Для образа Zalando Spilo эти имена
+   читаются именно так, а `PATRONI_SCOPE` / `PATRONI_NAMESPACE` игнорируются на
+   этапе генерации Patroni config:
 ```bash
-kubectl get pods -l app.kubernetes.io/name=patroni -o jsonpath='{range .items[*]}{.metadata.name}{": "}{.spec.containers[0].env[?(@.name=="PATRONI_SCOPE")].value}{" / "}{.spec.containers[0].env[?(@.name=="PATRONI_NAMESPACE")].value}{"\n"}{end}'
+kubectl get pods -l app.kubernetes.io/name=patroni -o jsonpath='{range .items[*]}{.metadata.name}{": "}{.spec.containers[0].env[?(@.name=="SCOPE")].value}{" / "}{.spec.containers[0].env[?(@.name=="NAMESPACE")].value}{"\n"}{end}'
 ```
 
 3. Проверьте доступность etcd-сервиса:

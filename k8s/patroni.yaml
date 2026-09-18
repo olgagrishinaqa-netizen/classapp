@@ -110,15 +110,13 @@ spec:
           image: registry.opensource.zalan.do/acid/spilo-15:3.0-p1
           imagePullPolicy: IfNotPresent
           env:
-            # scope/namespace ДОЛЖНЫ точно совпадать со значениями, под
-            # которыми уже существующий master (classapp-patroni-0)
-            # зарегистрирован в etcd, иначе новый под создаст отдельный
-            # "остров" в DCS и никогда не станет репликой существующего
-            # мастера (split-brain).
-            - name: PATRONI_SCOPE
+            # ВАЖНО: Spilo генерирует Patroni config из переменных SCOPE/NAMESPACE,
+            # а не из PATRONI_SCOPE/PATRONI_NAMESPACE. Имена PATRONI_* игнорируются
+            # на этапе bootstrap у Spilo и приводят к scope: dummy.
+            - name: SCOPE
               value: classapp-ha
-            - name: PATRONI_NAMESPACE
-              value: default
+            - name: NAMESPACE
+              value: service
             - name: ETCD_HOSTS
               value: etcd-service:2379
             - name: PATRONI_POSTGRESQL_DATA_DIR
