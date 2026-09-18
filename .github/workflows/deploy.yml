@@ -13,6 +13,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Prepare SSH key for retry-wrapped actions
+        run: |
+          set -euo pipefail
+          install -m 700 -d "$HOME/.ssh"
+          cat > "$HOME/.ssh/classapp_deploy_key" <<'EOF'
+          ${{ secrets.SSH_KEY }}
+          EOF
+          chmod 600 "$HOME/.ssh/classapp_deploy_key"
+
       # --- 1. ДИАГНОСТИЧЕСКИЙ ШАГ (FAIL-FAST) ---
       - name: Check SSH port availability (Fail-Fast)
         env:
@@ -42,7 +51,7 @@ jobs:
           with: |
             host: ${{ secrets.SSH_HOST }}
             username: ubuntu
-            key: ${{ secrets.SSH_KEY }}
+            key_path: /home/runner/.ssh/classapp_deploy_key
             port: 22
             script: |
               set -e
@@ -63,7 +72,7 @@ jobs:
           with: |
             host: ${{ secrets.SSH_HOST }}
             username: ubuntu
-            key: ${{ secrets.SSH_KEY }}
+            key_path: /home/runner/.ssh/classapp_deploy_key
             port: 22
             source: "nginx.conf,promtail-config.yml,monitoring/prometheus.yml,provisioning/**,k8s/*.yaml"
             target: "/opt/classapp"
@@ -78,7 +87,7 @@ jobs:
           with: |
             host: ${{ secrets.SSH_HOST }}
             username: ubuntu
-            key: ${{ secrets.SSH_KEY }}
+            key_path: /home/runner/.ssh/classapp_deploy_key
             port: 22
             envs: GRAFANA_ADMIN_PASSWORD
             script: |
