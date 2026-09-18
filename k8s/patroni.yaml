@@ -92,6 +92,11 @@ spec:
         patroni-role: replica
     spec:
       serviceAccountName: classapp-patroni
+      # fsGroup гарантирует, что emptyDir /data монтируется с правами на запись
+      # для непривилегированного пользователя postgres (uid 1001) внутри
+      # bitnami-образа, иначе первичная инициализация БД падает с Permission denied.
+      securityContext:
+        fsGroup: 1001
       tolerations:
       - key: node-role.kubernetes.io/control-plane
         operator: Exists
@@ -99,6 +104,30 @@ spec:
       - key: node-role.kubernetes.io/master
         operator: Exists
         effect: NoSchedule
+      # Гарантированно выставляет владельца/права на volume до старта Patroni,
+      # даже если fsGroup не применяется драйвером volume (emptyDir на некоторых
+      # CSI/runtime это игнорирует).
+      initContainers:
+        - name: fix-data-permissions
+          image: bitnamilegacy/postgresql-ha:15.8.0-debian-12-r22
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+            - |
+              mkdir -p /data
+              chown -R 1001:1001 /data
+              chmod 0700 /data
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: patroni-data
+              mountPath: /data
+          resources:
+            requests:
+              memory: 32Mi
+            limits:
+              memory: 64Mi
       containers:
         - name: patroni
           image: bitnamilegacy/postgresql-ha:15.8.0-debian-12-r22
@@ -154,6 +183,25 @@ spec:
           volumeMounts:
             - name: patroni-data
               mountPath: /data
+          # Первичная инициализация БД (initdb + запуск Patroni/etcd handshake)
+          # может занимать до пары минут на слабых VM, поэтому initialDelaySeconds
+          # достаточно велик, чтобы не убивать/не размечать pod NotReady раньше времени.
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: patroni-api
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /liveness
+              port: patroni-api
+            initialDelaySeconds: 90
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
           resources:
             requests:
               memory: 128Mi
