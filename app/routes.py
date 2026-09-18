@@ -28,7 +28,7 @@ from .forms import (
     PaymentForm,
     RegisterForm,
     RoleForm,
-    StudentCreateForm,
+    StudentForm,
     UserManagementForm,
     UserRoleForm,
 )
@@ -440,7 +440,7 @@ def update_user_role_page(user_id):
 @admin_required_page
 def admin_students_page():
     user = current_user()
-    form = StudentCreateForm()
+    form = StudentForm()
 
     if request.method == "POST":
         if form.validate_on_submit():
@@ -450,25 +450,33 @@ def admin_students_page():
                 birth_date=form.birth_date.data,
             )
             db.session.add(new_student)
-            db.session.commit()
-
-            current_app.logger.info(
-                "student_created",
-                extra={
-                    "event": "student_created",
-                    "student_id": new_student.id,
-                    "student_full_name": new_student.full_name,
-                    "admin_id": user.id,
-                    "admin_full_name": user.full_name,
-                },
-            )
-
-            flash(
-                f"Ученик «{new_student.full_name}» добавлен в состав класса.",
-                "success",
-            )
-            return redirect(url_for("main.admin_students_page"))
-        flash("Проверьте правильность заполнения формы.", "error")
+            try:
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
+                flash(
+                    f"Ученик «{new_student.last_name} {new_student.first_name}» "
+                    "уже есть в списке класса.",
+                    "error",
+                )
+            else:
+                current_app.logger.info(
+                    "student_created",
+                    extra={
+                        "event": "student_created",
+                        "student_id": new_student.id,
+                        "student_full_name": new_student.full_name,
+                        "admin_id": user.id,
+                        "admin_full_name": user.full_name,
+                    },
+                )
+                flash(
+                    f"Ученик «{new_student.full_name}» добавлен в состав класса.",
+                    "success",
+                )
+                return redirect(url_for("main.admin_students_page"))
+        else:
+            flash("Проверьте правильность заполнения формы.", "error")
 
     search_query = (request.args.get("search") or "").strip()
     students_query = Student.query

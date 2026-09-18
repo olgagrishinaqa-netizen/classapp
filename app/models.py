@@ -133,6 +133,11 @@ class Student(db.Model):
     """Ученик класса. Управление составом доступно только администратору."""
 
     __tablename__ = "students"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "last_name", "first_name", name="uq_students_last_name_first_name"
+        ),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     last_name = db.Column(db.String(64), nullable=False, index=True)
