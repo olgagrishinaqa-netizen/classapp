@@ -100,7 +100,31 @@ jobs:
             $KUBE apply -f /opt/classapp/k8s/patroni.yaml
 
             echo "⏳ ШАГ 3: Гарантированное ожидание готовности HA-кластера Patroni..."
-            $KUBE wait --namespace default --for=condition=Ready pod/classapp-patroni-0 --timeout=90s || true
+            if ! $KUBE wait --namespace default --for=condition=Ready pod/classapp-patroni-0 --timeout=180s; then
+              echo "❌ Patroni leader pod не готов. Диагностика:"
+              $KUBE get pods -l app.kubernetes.io/name=patroni --namespace default --show-labels || true
+              $KUBE describe pods -l app.kubernetes.io/name=patroni --namespace default || true
+              exit 1
+            fi
+
+            echo "⏳ Ожидаем master endpoint classapp-db-master..."
+            for i in $(seq 1 60); do
+              MASTER_ENDPOINTS=$($KUBE get endpoints classapp-db-master \
+                --namespace default \
+                -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || true)
+              if [ -n "${MASTER_ENDPOINTS:-}" ]; then
+                echo "✅ classapp-db-master endpoints: ${MASTER_ENDPOINTS}"
+                break
+              fi
+              if [ "$i" -eq 60 ]; then
+                echo "❌ classapp-db-master не получил ни одного master endpoint"
+                $KUBE get pods -l app.kubernetes.io/name=patroni --namespace default --show-labels || true
+                $KUBE get endpoints classapp-db-master --namespace default -o yaml || true
+                $KUBE logs pod/classapp-patroni-0 -c role-labeler --namespace default --tail=100 || true
+                exit 1
+              fi
+              sleep 2
+            done
 
             echo "☸️ ШАГ 4: Изолированный прогон миграций Alembic отдельным K8s Job (до раскатки нового web-образа)..."
             # Миграции выполняются Job'ом на новом образе ДО обновления deployment/classapp-web.
