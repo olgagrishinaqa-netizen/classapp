@@ -36,173 +36,192 @@ jobs:
 
       # --- 2. БЕЗОПАСНАЯ ПОДГОТОВКА ДИРЕКТОРИЙ (Chmod 755) ---
       - name: Prepare server directories and secure log folders
-        uses: appleboy/ssh-action@v1.2.0
+        # retry: appleboy/ssh-action при старте скачивает свой бинарь drone-ssh
+        # с CDN GitHub Releases. Изредка это скачивание падает с транзиентным
+        # 502/504 от CDN еще ДО подключения по SSH — наш деплой-скрипт вообще
+        # не успевает запуститься. Wandalen/wretry.action прозрачно оборачивает
+        # вложенный "uses:"-шаг и автоматически повторяет его целиком при сбое.
+        uses: Wandalen/wretry.action@v3
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ubuntu
-          key: ${{ secrets.SSH_KEY }}
-          port: 22
-          script: |
-            set -e
-            sudo mkdir -p /opt/classapp/k8s
-            sudo mkdir -p /var/log/classapp /var/log/nginx
-            
-            # Применение строго ограниченных прав доступа (Security Hardening)
-            sudo chown -R ubuntu:ubuntu /opt/classapp
-            sudo chown -R ubuntu:ubuntu /var/log/classapp /var/log/nginx
-            sudo chmod -R 755 /var/log/classapp /var/log/nginx
+          action: appleboy/ssh-action@v1.2.0
+          attempt_limit: 3
+          attempt_delay: 15000
+          with: |
+            host: ${{ secrets.SSH_HOST }}
+            username: ubuntu
+            key: ${{ secrets.SSH_KEY }}
+            port: 22
+            script: |
+              set -e
+              sudo mkdir -p /opt/classapp/k8s
+              sudo mkdir -p /var/log/classapp /var/log/nginx
+
+              # Применение строго ограниченных прав доступа (Security Hardening)
+              sudo chown -R ubuntu:ubuntu /opt/classapp
+              sudo chown -R ubuntu:ubuntu /var/log/classapp /var/log/nginx
+              sudo chmod -R 755 /var/log/classapp /var/log/nginx
 
       # --- 3. ИДЕМПОТЕНТНОЕ КОПИРОВАНИЕ КОНФИГУРАЦИЙ ---
       - name: Copy configurations and K8s manifests to server
-        uses: appleboy/scp-action@v0.1.7
+        uses: Wandalen/wretry.action@v3
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ubuntu
-          key: ${{ secrets.SSH_KEY }}
-          port: 22
-          source: "nginx.conf,promtail-config.yml,monitoring/prometheus.yml,provisioning/**,k8s/*.yaml"
-          target: "/opt/classapp"
+          action: appleboy/scp-action@v0.1.7
+          attempt_limit: 3
+          attempt_delay: 15000
+          with: |
+            host: ${{ secrets.SSH_HOST }}
+            username: ubuntu
+            key: ${{ secrets.SSH_KEY }}
+            port: 22
+            source: "nginx.conf,promtail-config.yml,monitoring/prometheus.yml,provisioning/**,k8s/*.yaml"
+            target: "/opt/classapp"
 
       # --- 4. ЕДИНАЯ ОРКЕСТРАЦИЯ KUBERNETES И БЕЗОПАСНЫЙ ДЕПЛОЙ ---
+      # Скрипт ниже полностью идемпотентен (kubectl apply, условные проверки
+      # готовности, Job с уникальным именем по SHA) — его безопасно повторять
+      # при транзиентном сбое скачивания бинаря drone-ssh экшеном.
       - name: Native Kubernetes Deployment Stack
-        uses: appleboy/ssh-action@v1.2.0
+        uses: Wandalen/wretry.action@v3
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ubuntu
-          key: ${{ secrets.SSH_KEY }}
-          port: 22
-          # Исключаем передачу SECRET_KEY и DB_PASSWORD как переменных сессии! 
-          # Передаем только нечувствительные параметры для метаданных
-          envs: GRAFANA_ADMIN_PASSWORD
-          script: |
-            set -euo pipefail
-            cd /opt/classapp
-            
-            # Конфигурация системного CLI K3s
-            KUBE="sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl"
-            REPO_OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-            K8S_IMAGE="ghcr.io/${REPO_OWNER_LOWER}/classapp:main-${{ github.event.workflow_run.head_sha }}"
+          action: appleboy/ssh-action@v1.2.0
+          attempt_limit: 3
+          attempt_delay: 15000
+          with: |
+            host: ${{ secrets.SSH_HOST }}
+            username: ubuntu
+            key: ${{ secrets.SSH_KEY }}
+            port: 22
+            envs: GRAFANA_ADMIN_PASSWORD
+            script: |
+              set -euo pipefail
+              cd /opt/classapp
 
-            echo "Проверяем доступность API-сервера K3s..."
-            $KUBE version --client
+              # Конфигурация системного CLI K3s
+              KUBE="sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl"
+              REPO_OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+              K8S_IMAGE="ghcr.io/${REPO_OWNER_LOWER}/classapp:main-${{ github.event.workflow_run.head_sha }}"
 
-            # Удалено динамическое создание .env-файла с секретами на диске хоста!
-            # Сейф classapp-secrets теперь персистентен и управляется напрямую в K3s, 
-            # либо создается один раз администратором.
 
-            echo "☸️ ШАГ 1: Автоматическое снятие ограничений планировщика с мастер-ноды..."
-            $KUBE taint nodes --all node-role.kubernetes.io/master:NoSchedule- || true
-            $KUBE taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule- || true
+              echo "Проверяем доступность API-сервера K3s..."
+              $KUBE version --client
 
-            echo "☸️ ШАГ 2: Идемпотентное применение манифестов инфраструктуры СУБД..."
-            $KUBE apply -f /opt/classapp/k8s/etcd.yaml
-            $KUBE apply -f /opt/classapp/k8s/services.yaml
-            $KUBE apply -f /opt/classapp/k8s/patroni.yaml
+              # Удалено динамическое создание .env-файла с секретами на диске хоста!
+              # Сейф classapp-secrets теперь персистентен и управляется напрямую в K3s, 
+              # либо создается один раз администратором.
 
-            echo "⏳ ШАГ 3: Ожидание обновления StatefulSet Patroni и готовности HA-кластера..."
-            if ! $KUBE rollout status statefulset/classapp-patroni --namespace default --timeout=180s; then
-              echo "❌ StatefulSet Patroni не завершил обновление за 180s. Диагностика:"
-              $KUBE get pods -l app.kubernetes.io/name=patroni --namespace default --show-labels || true
-              $KUBE describe pods -l app.kubernetes.io/name=patroni --namespace default || true
-              echo "--- Логи основного контейнера patroni (statefulset/classapp-patroni) ---"
-              $KUBE logs statefulset/classapp-patroni -c patroni --namespace default --tail=100 || true
-              exit 1
-            fi
+              echo "☸️ ШАГ 1: Автоматическое снятие ограничений планировщика с мастер-ноды..."
+              $KUBE taint nodes --all node-role.kubernetes.io/master:NoSchedule- || true
+              $KUBE taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule- || true
 
-            if ! $KUBE wait --namespace default --for=condition=Ready pod/classapp-patroni-0 --timeout=180s; then
-              echo "❌ Patroni leader pod не готов. Диагностика:"
-              $KUBE get pods -l app.kubernetes.io/name=patroni --namespace default --show-labels || true
-              $KUBE describe pods -l app.kubernetes.io/name=patroni --namespace default || true
-              exit 1
-            fi
+              echo "☸️ ШАГ 2: Идемпотентное применение манифестов инфраструктуры СУБД..."
+              $KUBE apply -f /opt/classapp/k8s/etcd.yaml
+              $KUBE apply -f /opt/classapp/k8s/services.yaml
+              $KUBE apply -f /opt/classapp/k8s/patroni.yaml
 
-            echo "⏳ Ожидаем master endpoint classapp-db-master..."
-            for i in $(seq 1 60); do
-              MASTER_ENDPOINTS=$($KUBE get endpoints classapp-db-master \
-                --namespace default \
-                -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || true)
-              if [ -n "${MASTER_ENDPOINTS:-}" ]; then
-                echo "✅ classapp-db-master endpoints: ${MASTER_ENDPOINTS}"
-                break
-              fi
-              if [ "$i" -eq 60 ]; then
-                echo "❌ classapp-db-master не получил ни одного master endpoint"
+              echo "⏳ ШАГ 3: Ожидание обновления StatefulSet Patroni и готовности HA-кластера..."
+              if ! $KUBE rollout status statefulset/classapp-patroni --namespace default --timeout=180s; then
+                echo "❌ StatefulSet Patroni не завершил обновление за 180s. Диагностика:"
                 $KUBE get pods -l app.kubernetes.io/name=patroni --namespace default --show-labels || true
-                $KUBE get endpoints classapp-db-master --namespace default -o yaml || true
+                $KUBE describe pods -l app.kubernetes.io/name=patroni --namespace default || true
                 echo "--- Логи основного контейнера patroni (statefulset/classapp-patroni) ---"
                 $KUBE logs statefulset/classapp-patroni -c patroni --namespace default --tail=100 || true
-                CONTAINERS=$($KUBE get pod classapp-patroni-0 --namespace default \
-                  -o jsonpath='{.spec.containers[*].name}' 2>/dev/null || true)
-                if printf '%s' "$CONTAINERS" | tr ' ' '\n' | grep -qx 'role-labeler'; then
-                  $KUBE logs pod/classapp-patroni-0 -c role-labeler --namespace default --tail=100 || true
-                else
-                  echo "⚠️ classapp-patroni-0 не содержит контейнер role-labeler; pod создан старым шаблоном"
+                exit 1
+              fi
+
+              if ! $KUBE wait --namespace default --for=condition=Ready pod/classapp-patroni-0 --timeout=180s; then
+                echo "❌ Patroni leader pod не готов. Диагностика:"
+                $KUBE get pods -l app.kubernetes.io/name=patroni --namespace default --show-labels || true
+                $KUBE describe pods -l app.kubernetes.io/name=patroni --namespace default || true
+                exit 1
+              fi
+
+              echo "⏳ Ожидаем master endpoint classapp-db-master..."
+              for i in $(seq 1 60); do
+                MASTER_ENDPOINTS=$($KUBE get endpoints classapp-db-master \
+                  --namespace default \
+                  -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || true)
+                if [ -n "${MASTER_ENDPOINTS:-}" ]; then
+                  echo "✅ classapp-db-master endpoints: ${MASTER_ENDPOINTS}"
+                  break
                 fi
+                if [ "$i" -eq 60 ]; then
+                  echo "❌ classapp-db-master не получил ни одного master endpoint"
+                  $KUBE get pods -l app.kubernetes.io/name=patroni --namespace default --show-labels || true
+                  $KUBE get endpoints classapp-db-master --namespace default -o yaml || true
+                  echo "--- Логи основного контейнера patroni (statefulset/classapp-patroni) ---"
+                  $KUBE logs statefulset/classapp-patroni -c patroni --namespace default --tail=100 || true
+                  CONTAINERS=$($KUBE get pod classapp-patroni-0 --namespace default \
+                    -o jsonpath='{.spec.containers[*].name}' 2>/dev/null || true)
+                  if printf '%s' "$CONTAINERS" | tr ' ' '\n' | grep -qx 'role-labeler'; then
+                    $KUBE logs pod/classapp-patroni-0 -c role-labeler --namespace default --tail=100 || true
+                  else
+                    echo "⚠️ classapp-patroni-0 не содержит контейнер role-labeler; pod создан старым шаблоном"
+                  fi
+                  exit 1
+                fi
+                sleep 2
+              done
+
+              echo "☸️ ШАГ 4: Изолированный прогон миграций Alembic отдельным K8s Job (до раскатки нового web-образа)..."
+              # Миграции выполняются Job'ом на новом образе ДО обновления deployment/classapp-web.
+              # Это гарантирует, что новая версия приложения не начнет разворачиваться,
+              # пока схема БД не обновится успешно.
+              SHORT_SHA=$(echo "${{ github.event.workflow_run.head_sha }}" | cut -c1-8)
+              MIGRATE_JOB_NAME="classapp-migrate-${SHORT_SHA}"
+              sed \
+                -e "s#__IMAGE__#${K8S_IMAGE}#g" \
+                -e "s#__JOB_NAME__#${MIGRATE_JOB_NAME}#g" \
+                /opt/classapp/k8s/migrate-job.yaml > /tmp/migrate-job-rendered.yaml
+
+              $KUBE delete job "$MIGRATE_JOB_NAME" --namespace default --ignore-not-found=true
+              $KUBE apply -f /tmp/migrate-job-rendered.yaml
+
+              if ! $KUBE wait --namespace default --for=condition=complete "job/$MIGRATE_JOB_NAME" --timeout=120s; then
+                echo "❌ Ошибка: миграции Alembic не завершились успешно! Логи Job:"
+                $KUBE logs "job/$MIGRATE_JOB_NAME" --namespace default || true
                 exit 1
               fi
-              sleep 2
-            done
+              echo "✅ SUCCESS: миграции схемы БД применены Job'ом $MIGRATE_JOB_NAME"
 
-            echo "☸️ ШАГ 4: Изолированный прогон миграций Alembic отдельным K8s Job (до раскатки нового web-образа)..."
-            # Миграции выполняются Job'ом на новом образе ДО обновления deployment/classapp-web.
-            # Это гарантирует, что новая версия приложения не начнет разворачиваться,
-            # пока схема БД не обновится успешно.
-            SHORT_SHA=$(echo "${{ github.event.workflow_run.head_sha }}" | cut -c1-8)
-            MIGRATE_JOB_NAME="classapp-migrate-${SHORT_SHA}"
-            sed \
-              -e "s#__IMAGE__#${K8S_IMAGE}#g" \
-              -e "s#__JOB_NAME__#${MIGRATE_JOB_NAME}#g" \
-              /opt/classapp/k8s/migrate-job.yaml > /tmp/migrate-job-rendered.yaml
+              echo "☸️ ШАГ 5: Атомарное развертывание web+nginx через Kustomize с новым тегом образа..."
+              # Вместо точечного 'kubectl set image' используем kustomize (встроен в kubectl -k):
+              # один apply синхронно обновляет deployment/classapp-web и nginx с одним и тем же
+              # тегом образа, что дает атомарность релиза и стандартный откат через
+              # 'kubectl rollout undo deployment/classapp-web'.
+              sed -i "s#newTag:.*#newTag: main-${{ github.event.workflow_run.head_sha }}#" /opt/classapp/k8s/kustomization.yaml
+              $KUBE apply -k /opt/classapp/k8s
 
-            $KUBE delete job "$MIGRATE_JOB_NAME" --namespace default --ignore-not-found=true
-            $KUBE apply -f /tmp/migrate-job-rendered.yaml
-
-            if ! $KUBE wait --namespace default --for=condition=complete "job/$MIGRATE_JOB_NAME" --timeout=120s; then
-              echo "❌ Ошибка: миграции Alembic не завершились успешно! Логи Job:"
-              $KUBE logs "job/$MIGRATE_JOB_NAME" --namespace default || true
-              exit 1
-            fi
-            echo "✅ SUCCESS: миграции схемы БД применены Job'ом $MIGRATE_JOB_NAME"
-
-            echo "☸️ ШАГ 5: Атомарное развертывание web+nginx через Kustomize с новым тегом образа..."
-            # Вместо точечного 'kubectl set image' используем kustomize (встроен в kubectl -k):
-            # один apply синхронно обновляет deployment/classapp-web и nginx с одним и тем же
-            # тегом образа, что дает атомарность релиза и стандартный откат через
-            # 'kubectl rollout undo deployment/classapp-web'.
-            sed -i "s#newTag:.*#newTag: main-${{ github.event.workflow_run.head_sha }}#" /opt/classapp/k8s/kustomization.yaml
-            $KUBE apply -k /opt/classapp/k8s
-
-            echo "⏳ ШАГ 6: Ожидание успешного прохождения Rolling Update пода Flask..."
-            if ! $KUBE rollout status deployment/classapp-web --namespace default --timeout=180s; then
-              echo "❌ Ошибка: Новая версия Flask-приложения не перешла в статус Ready!"
-              $KUBE get pods -l app.kubernetes.io/name=classapp-web --namespace default || true
-              $KUBE describe pods -l app.kubernetes.io/name=classapp-web --namespace default || true
-              exit 1
-            fi
-
-            echo "Проверяем доступность NodePort 30080 через локальный healthcheck..."
-            for i in $(seq 1 10); do
-              if curl -fsS --max-time 5 http://127.0.0.1:30080/healthz >/dev/null 2>&1; then
-                echo "🚀 ИНФРАСТРУКТУРА KUBERNETES ПОЛНОСТЬЮ РАЗВЕРНУТА И ДОСТУПНА СНАРУЖИ!"
-                break
-              fi
-              if [ "$i" -eq 10 ]; then
-                echo "❌ Ошибка: Веб-контур не отвечает на порту 30080 по истечении таймаута."
+              echo "⏳ ШАГ 6: Ожидание успешного прохождения Rolling Update пода Flask..."
+              if ! $KUBE rollout status deployment/classapp-web --namespace default --timeout=180s; then
+                echo "❌ Ошибка: Новая версия Flask-приложения не перешла в статус Ready!"
+                $KUBE get pods -l app.kubernetes.io/name=classapp-web --namespace default || true
+                $KUBE describe pods -l app.kubernetes.io/name=classapp-web --namespace default || true
                 exit 1
               fi
-              echo "Ожидание прогрева веб-сервера ($i/10)..."
-              sleep 3
-            done
 
-            # --- 5. КОРРЕКТНАЯ АСИНХРОННАЯ ОЧИСТКА ХОСТА ---
-            echo "🧹 ШАГ 7: Безопасная фоновая очистка неиспользуемых слоев и логов..."
-            (
-              sudo journalctl --vacuum-time=7d >/dev/null 2>&1 || true
-              if sudo k3s crictl images >/dev/null 2>&1; then
-                sudo k3s crictl rmi \$(sudo k3s crictl images -q --unreferenced) >/dev/null 2>&1 || true
-              fi
-              echo "✅ Асинхронная очистка завершена."
-            ) &
+              echo "Проверяем доступность NodePort 30080 через локальный healthcheck..."
+              for i in $(seq 1 10); do
+                if curl -fsS --max-time 5 http://127.0.0.1:30080/healthz >/dev/null 2>&1; then
+                  echo "🚀 ИНФРАСТРУКТУРА KUBERNETES ПОЛНОСТЬЮ РАЗВЕРНУТА И ДОСТУПНА СНАРУЖИ!"
+                  break
+                fi
+                if [ "$i" -eq 10 ]; then
+                  echo "❌ Ошибка: Веб-контур не отвечает на порту 30080 по истечении таймаута."
+                  exit 1
+                fi
+                echo "Ожидание прогрева веб-сервера ($i/10)..."
+                sleep 3
+              done
+
+              # --- 5. КОРРЕКТНАЯ АСИНХРОННАЯ ОЧИСТКА ХОСТА ---
+              echo "🧹 ШАГ 7: Безопасная фоновая очистка неиспользуемых слоев и логов..."
+              (
+                sudo journalctl --vacuum-time=7d >/dev/null 2>&1 || true
+                if sudo k3s crictl images >/dev/null 2>&1; then
+                  sudo k3s crictl rmi \$(sudo k3s crictl images -q --unreferenced) >/dev/null 2>&1 || true
+                fi
+                echo "✅ Асинхронная очистка завершена."
+              ) &
 
       - name: Notify deploy result
         if: always()
