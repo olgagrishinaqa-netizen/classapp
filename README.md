@@ -101,6 +101,45 @@ ansible-playbook -i inventory/hosts.ini playbook.yml \
 устанавливает фиксированную версию K3s, создает HA control plane и подключает
 workers. Секрет `k3s_token` рекомендуется хранить в Ansible Vault.
 
+### Конфигурация Patroni и etcd в Kubernetes
+
+В манифесте `k8s/patroni.yaml` определены:
+
+- **ConfigMap `patroni-config`**: содержит явную конфигурацию Patroni с секцией etcd
+  ```yaml
+  etcd:
+    hosts:
+      - etcd-service:2379
+  ```
+  Переменная окружения `PATRONI_CONFIG_TEMPLATE=/etc/patroni/patroni.yaml` 
+  указывает Patroni использовать этот конфиг.
+
+- **etcd Deployment** (`k8s/etcd.yaml`): однопроцессный etcd для координации HA-кластера.
+  Service `etcd-service:2379` доступен для Patroni pods.
+
+- **Patroni StatefulSet** (2 реплики): каждый pod имеет:
+  - initContainer `fix-data-permissions` для установки владельца `/data` (uid 1001)
+  - securityContext `fsGroup: 1001` для корректных прав доступа
+  - readinessProbe + livenessProbe с `initialDelaySeconds: 60-90` для ожидания инициализации БД
+  - Два Service: `classapp-db-master` (для записи) и `classapp-db-replica` (для чтения)
+
+- **role-labeler sidecar**: периодически запрашивает API Patroni и помечает pod 
+  label `patroni-role=master` или `patroni-role=replica` для правильной маршрутизации 
+  трафика через Service.
+
+Проверка готовности Patroni:
+```bash
+kubectl get pods -l app.kubernetes.io/name=patroni --show-labels
+kubectl logs -l app.kubernetes.io/name=patroni -c patroni --tail=50
+kubectl get endpoints classapp-db-master  # должен быть непуст
+```
+
+Если Patroni pods зависают в состоянии "Pending" или "CrashLoopBackOff", 
+проверьте:
+1. `kubectl describe pod classapp-patroni-0` — ищите описание и события
+2. `kubectl logs classapp-patroni-0 -c patroni` — логи инициализации БД
+3. `kubectl get svc etcd-service` — убедитесь, что etcd сервис доступен
+
 ### Мониторинг и логирование в Kubernetes
 
 Роль `monitoring` устанавливает Helm chart `kube-prometheus-stack`, включая
@@ -141,3 +180,9 @@ kubectl -n monitoring get servicemonitors
 kubectl -n monitoring port-forward svc/kube-prometheus-stack-prometheus 9090:9090
 kubectl -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80
 ```
+
+## Troubleshooting
+
+При проблемах с развёртыванием Patroni HA, etcd конфигурацией или подключением
+к БД см. [docs/PATRONI_TROUBLESHOOTING.md](docs/PATRONI_TROUBLESHOOTING.md) для
+подробного описания типичных проблем и их решений.
