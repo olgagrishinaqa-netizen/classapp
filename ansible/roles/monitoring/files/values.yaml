@@ -1,0 +1,18 @@
+grafana:
+  enabled: true
+  admin:
+    existingSecret: classapp-grafana
+  service:
+    type: NodePort
+    nodePort: 30300
+prometheus:
+  service:
+    type: NodePort
+    nodePort: 30900
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+nodeExporter:
+  enabled: true
+kubeStateMetrics:
+  enabled: true

@@ -1,0 +1,6 @@
+---
+galaxy_info:
+  author: classapp
+  description: Install kube-prometheus-stack and classapp monitoring resources
+  min_ansible_version: "2.14"
+dependencies: []
