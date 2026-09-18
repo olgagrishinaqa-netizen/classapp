@@ -115,16 +115,18 @@ workers. Секрет `k3s_token` рекомендуется хранить в A
 - **etcd-конфигурация через переменные окружения** (не ConfigMap):
   ```yaml
   env:
-    - name: PATRONI_SCOPE
+    - name: SCOPE
       value: classapp-ha
-    - name: PATRONI_NAMESPACE
-      value: default
+    - name: NAMESPACE
+      value: service
     - name: ETCD_HOSTS
       value: etcd-service:2379
   ```
-  `PATRONI_SCOPE` и `PATRONI_NAMESPACE` должны быть одинаковыми на всех подах
-  кластера — иначе новый под создаст в etcd отдельный "остров" вместо того,
-  чтобы присоединиться к существующему мастеру (split-brain).
+  В образе Zalando Spilo bootstrap-скрипт генерирует Patroni config из
+  переменных `SCOPE` и `NAMESPACE`, а не из `PATRONI_SCOPE` / `PATRONI_NAMESPACE`.
+  Эти значения должны быть одинаковыми на всех подах кластера, иначе новый pod
+  создаст отдельный "остров" в etcd вместо присоединения к существующему мастеру
+  (split-brain).
 
 - **etcd Deployment** (`k8s/etcd.yaml`): однопроцессный etcd для координации HA-кластера.
   Service `etcd-service:2379` доступен для Patroni pods.
