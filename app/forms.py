@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from flask_wtf import FlaskForm
 from flask_wtf.file import FileAllowed, FileField
-from wtforms import DecimalField, PasswordField, SelectField, StringField, SubmitField, TextAreaField
+from wtforms import DateField, DecimalField, PasswordField, SelectField, StringField, SubmitField, TextAreaField
 from wtforms.validators import DataRequired, EqualTo, Length, NumberRange, Optional
 
 
@@ -88,3 +88,26 @@ class UserManagementForm(FlaskForm):
     )
     password = PasswordField("Пароль", validators=[Optional(), Length(min=6, max=128)])
     submit = SubmitField("Сохранить пользователя")
+
+
+class StudentCreateForm(FlaskForm):
+    last_name = StringField(
+        "Фамилия",
+        validators=[
+            DataRequired(message="Пожалуйста, укажите фамилию ученика."),
+            Length(max=64, message="Фамилия не должна превышать 64 символа."),
+        ],
+    )
+    first_name = StringField(
+        "Имя",
+        validators=[
+            DataRequired(message="Пожалуйста, укажите имя ученика."),
+            Length(max=64, message="Имя не должно превышать 64 символа."),
+        ],
+    )
+    birth_date = DateField(
+        "Дата рождения",
+        validators=[Optional()],
+        format="%Y-%m-%d",
+    )
+    submit = SubmitField("Добавить ученика")

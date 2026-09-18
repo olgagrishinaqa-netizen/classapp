@@ -127,3 +127,19 @@ class TaskComment(db.Model):
     task_id = db.Column(db.Integer, db.ForeignKey("task.id"), nullable=False)
     body = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=local_now, nullable=False)
+
+
+class Student(db.Model):
+    """Ученик класса. Управление составом доступно только администратору."""
+
+    __tablename__ = "students"
+
+    id = db.Column(db.Integer, primary_key=True)
+    last_name = db.Column(db.String(64), nullable=False, index=True)
+    first_name = db.Column(db.String(64), nullable=False, index=True)
+    birth_date = db.Column(db.Date, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    @property
+    def full_name(self):
+        return f"{self.last_name} {self.first_name}"

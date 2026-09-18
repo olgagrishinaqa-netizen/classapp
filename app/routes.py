@@ -16,7 +16,7 @@ from flask import (
     session,
     url_for,
 )
-from sqlalchemy import case
+from sqlalchemy import case, or_
 from sqlalchemy.exc import IntegrityError
 from werkzeug.utils import secure_filename
 
@@ -28,10 +28,11 @@ from .forms import (
     PaymentForm,
     RegisterForm,
     RoleForm,
+    StudentCreateForm,
     UserManagementForm,
     UserRoleForm,
 )
-from .models import Expense, ExpenseReport, News, Payment, Task, User, local_now
+from .models import Expense, ExpenseReport, News, Payment, Student, Task, User, local_now
 
 bp = Blueprint("main", __name__)
 
@@ -60,6 +61,33 @@ def admin_required(view):
     def wrapped(*args, **kwargs):
         if not current_user().is_admin:
             return jsonify(error="Доступ только для администратора"), 403
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
+def login_required_page(view):
+    """Декоратор для HTML-страниц: перенаправляет неавторизованных на /login."""
+
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        user = current_user()
+        if not user or not user.is_authenticated:
+            return redirect(url_for("main.login_page"))
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
+def admin_required_page(view):
+    """Декоратор для HTML-страниц: доступ строго для роли администратора."""
+
+    @wraps(view)
+    @login_required_page
+    def wrapped(*args, **kwargs):
+        if not current_user().is_admin:
+            flash("Доступ к этому разделу разрешён только администратору.", "error")
+            return redirect(url_for("main.dashboard_page"))
         return view(*args, **kwargs)
 
     return wrapped
@@ -405,6 +433,65 @@ def update_user_role_page(user_id):
     else:
         flash("Выберите корректную роль.", "error")
     return redirect(url_for("main.users_page"))
+
+
+@bp.route("/admin/students", methods=["GET", "POST"])
+@login_required_page
+@admin_required_page
+def admin_students_page():
+    user = current_user()
+    form = StudentCreateForm()
+
+    if request.method == "POST":
+        if form.validate_on_submit():
+            new_student = Student(
+                last_name=form.last_name.data.strip(),
+                first_name=form.first_name.data.strip(),
+                birth_date=form.birth_date.data,
+            )
+            db.session.add(new_student)
+            db.session.commit()
+
+            current_app.logger.info(
+                "student_created",
+                extra={
+                    "event": "student_created",
+                    "student_id": new_student.id,
+                    "student_full_name": new_student.full_name,
+                    "admin_id": user.id,
+                    "admin_full_name": user.full_name,
+                },
+            )
+
+            flash(
+                f"Ученик «{new_student.full_name}» добавлен в состав класса.",
+                "success",
+            )
+            return redirect(url_for("main.admin_students_page"))
+        flash("Проверьте правильность заполнения формы.", "error")
+
+    search_query = (request.args.get("search") or "").strip()
+    students_query = Student.query
+    if search_query:
+        words = search_query.split()
+        for word in words:
+            pattern = f"%{word}%"
+            students_query = students_query.filter(
+                or_(Student.last_name.ilike(pattern), Student.first_name.ilike(pattern))
+            )
+
+    students = students_query.order_by(
+        Student.last_name.asc(), Student.first_name.asc()
+    ).all()
+
+    return render_template(
+        "admin_students.html",
+        user=user,
+        current_user=user,
+        form=form,
+        students=students,
+        search_query=search_query,
+    )
 
 
 @bp.route("/profile", methods=["GET", "POST"])
