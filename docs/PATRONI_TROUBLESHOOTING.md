@@ -54,6 +54,44 @@ kubectl apply -f k8s/patroni.yaml
 kubectl delete pod classapp-patroni-0 classapp-patroni-1 --ignore-not-found
 ```
 
+### 1.1. `Unable to change service endpoints ... is forbidden` / RBAC для Kubernetes Endpoints
+
+**Симптомы:**
+```
+Warning: Unable to change service endpoints: ... endpoints "classapp-ha" is forbidden: User "system:serviceaccount:default:classapp-patroni" cannot patch resource "endpoints" in API group "" in the namespace "default"
+```
+
+**Причина:**
+Patroni должен иметь доступ к Kubernetes API для обновления `endpoints` и `services`,
+чтобы leader/replica могли правильно маршрутизировать трафик. Если `Role` для
+ServiceAccount `classapp-patroni` не включает `endpoints`, то лидер стартует, но второй
+pod не присоединяется корректно.
+
+**Решение:**
+Убедитесь, что в `k8s/patroni.yaml` Role содержит `endpoints` (и желательно `services`):
+```yaml
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+      - pods/proxy
+      - endpoints
+      - services
+    verbs:
+      - get
+      - list
+      - watch
+      - patch
+      - update
+```
+
+После правки:
+```bash
+kubectl apply -f k8s/patroni.yaml
+kubectl rollout restart statefulset/classapp-patroni -n default
+kubectl rollout status statefulset/classapp-patroni -n default --timeout=300s
+```
 
 ---
 
