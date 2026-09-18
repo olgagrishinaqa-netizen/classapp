@@ -90,7 +90,7 @@ class UserManagementForm(FlaskForm):
     submit = SubmitField("Сохранить пользователя")
 
 
-class StudentCreateForm(FlaskForm):
+class StudentForm(FlaskForm):
     last_name = StringField(
         "Фамилия",
         validators=[
@@ -110,4 +110,4 @@ class StudentCreateForm(FlaskForm):
         validators=[Optional()],
         format="%Y-%m-%d",
     )
-    submit = SubmitField("Добавить ученика")
+    submit = SubmitField("Создать ученика")
