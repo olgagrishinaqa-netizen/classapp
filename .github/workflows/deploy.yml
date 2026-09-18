@@ -99,7 +99,14 @@ jobs:
             $KUBE apply -f /opt/classapp/k8s/services.yaml
             $KUBE apply -f /opt/classapp/k8s/patroni.yaml
 
-            echo "⏳ ШАГ 3: Гарантированное ожидание готовности HA-кластера Patroni..."
+            echo "⏳ ШАГ 3: Ожидание обновления StatefulSet Patroni и готовности HA-кластера..."
+            if ! $KUBE rollout status statefulset/classapp-patroni --namespace default --timeout=300s; then
+              echo "❌ StatefulSet Patroni не завершил обновление. Диагностика:"
+              $KUBE get pods -l app.kubernetes.io/name=patroni --namespace default --show-labels || true
+              $KUBE describe pods -l app.kubernetes.io/name=patroni --namespace default || true
+              exit 1
+            fi
+
             if ! $KUBE wait --namespace default --for=condition=Ready pod/classapp-patroni-0 --timeout=180s; then
               echo "❌ Patroni leader pod не готов. Диагностика:"
               $KUBE get pods -l app.kubernetes.io/name=patroni --namespace default --show-labels || true
@@ -120,7 +127,13 @@ jobs:
                 echo "❌ classapp-db-master не получил ни одного master endpoint"
                 $KUBE get pods -l app.kubernetes.io/name=patroni --namespace default --show-labels || true
                 $KUBE get endpoints classapp-db-master --namespace default -o yaml || true
-                $KUBE logs pod/classapp-patroni-0 -c role-labeler --namespace default --tail=100 || true
+                CONTAINERS=$($KUBE get pod classapp-patroni-0 --namespace default \
+                  -o jsonpath='{.spec.containers[*].name}' 2>/dev/null || true)
+                if printf '%s' "$CONTAINERS" | tr ' ' '\n' | grep -qx 'role-labeler'; then
+                  $KUBE logs pod/classapp-patroni-0 -c role-labeler --namespace default --tail=100 || true
+                else
+                  echo "⚠️ classapp-patroni-0 не содержит контейнер role-labeler; pod создан старым шаблоном"
+                fi
                 exit 1
               fi
               sleep 2

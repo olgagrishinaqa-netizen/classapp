@@ -78,6 +78,9 @@ metadata:
 spec:
   serviceName: classapp-patroni
   replicas: 2
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
   selector:
     matchLabels:
       app.kubernetes.io/name: patroni
@@ -98,7 +101,7 @@ spec:
         effect: NoSchedule
       containers:
         - name: patroni
-          image: bitnami/postgresql-ha:15.8.0-debian-12-r22
+          image: bitnamilegacy/postgresql-ha:15.8.0-debian-12-r22
           imagePullPolicy: IfNotPresent
           env:
             - name: POSTGRESQL_HA_MODE
