@@ -147,7 +147,7 @@ jobs:
                 echo "Ожидаем успешного завершения миграций Alembic..."
                 if ! $KUBE wait --for=condition=complete job/classapp-migrate --namespace default --timeout=120s; then
                   echo "❌ Ошибка: Миграции Alembic через K8s Job завершились сбоем!"
-                  $KUBE logs job/classapp-migrate --namespace default || true
+                  $KUBE logs job/classapp-migrate --all-containers=true --namespace default || true
                   exit 1
                 fi
                 echo "✅ K8s migrations completed successfully!"
@@ -177,7 +177,7 @@ jobs:
               
               for i in $(seq 1 15); do
                 # Используем ключ -s, игнорируя 502/504 на этапе линковки баз данных
-                if curl -fsS --max-time 5 http://127.0.0 >/dev/null 2>&1; then
+                if curl -fsS --max-time 5 http://127.0.0.1:30080/healthz >/dev/null 2>&1; then
                   echo "🚀 ИНФРАСТРУКТУРА KUBERNETES ПОЛНОСТЬЮ РАЗВЕРНУТА И ДОСТУПНА СНАРУЖИ!"
                   break
                 fi
@@ -213,4 +213,4 @@ jobs:
           Commit: ${{ github.event.workflow_run.head_sha }}
           EOF
           )
-          curl -s -X POST "telegram.org{{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" --data-urlencode "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" --data-urlencode "text=${TEXT}"
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" --data-urlencode "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" --data-urlencode "text=${TEXT}"
