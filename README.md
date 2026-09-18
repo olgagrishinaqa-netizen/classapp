@@ -119,7 +119,7 @@ workers. Секрет `k3s_token` рекомендуется хранить в A
       value: classapp-ha
     - name: PATRONI_NAMESPACE
       value: default
-    - name: PATRONI_ETCD3_HOSTS
+    - name: PATRONI_ETCD_HOSTS
       value: etcd-service:2379
   ```
   `PATRONI_SCOPE` и `PATRONI_NAMESPACE` должны быть одинаковыми на всех подах
