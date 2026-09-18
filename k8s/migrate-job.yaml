@@ -60,8 +60,12 @@ spec:
                 secretKeyRef:
                   name: classapp-secrets
                   key: db-password
-            - name: DATABASE_URL
-              value: postgresql://postgres:$(DB_PASSWORD)@classapp-db-master:5432/classapp
+            - name: POSTGRES_HOST
+              value: classapp-db-master
+            - name: POSTGRES_DB
+              value: classapp
+            - name: POSTGRES_USER
+              value: postgres
             - name: SECRET_KEY
               valueFrom:
                 secretKeyRef:

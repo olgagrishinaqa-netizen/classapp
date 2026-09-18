@@ -4,6 +4,7 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
+from config import build_database_url
 
 # импорт metadata из вашего приложения
 from app.extensions import db
@@ -11,8 +12,8 @@ import app.models  # noqa: F401 -- register every model with SQLAlchemy metadata
 
 config = context.config
 
-# берем URL из переменной окружения
-db_url = os.getenv("DATABASE_URL")
+# берем URL из переменной окружения или собираем из POSTGRES_* переменных
+db_url = build_database_url(default=config.get_main_option("sqlalchemy.url"))
 if db_url:
     config.set_main_option("sqlalchemy.url", db_url)
 
