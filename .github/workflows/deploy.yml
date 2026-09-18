@@ -100,10 +100,12 @@ jobs:
             $KUBE apply -f /opt/classapp/k8s/patroni.yaml
 
             echo "⏳ ШАГ 3: Ожидание обновления StatefulSet Patroni и готовности HA-кластера..."
-            if ! $KUBE rollout status statefulset/classapp-patroni --namespace default --timeout=300s; then
-              echo "❌ StatefulSet Patroni не завершил обновление. Диагностика:"
+            if ! $KUBE rollout status statefulset/classapp-patroni --namespace default --timeout=180s; then
+              echo "❌ StatefulSet Patroni не завершил обновление за 180s. Диагностика:"
               $KUBE get pods -l app.kubernetes.io/name=patroni --namespace default --show-labels || true
               $KUBE describe pods -l app.kubernetes.io/name=patroni --namespace default || true
+              echo "--- Логи основного контейнера patroni (statefulset/classapp-patroni) ---"
+              $KUBE logs statefulset/classapp-patroni -c patroni --namespace default --tail=100 || true
               exit 1
             fi
 
@@ -127,6 +129,8 @@ jobs:
                 echo "❌ classapp-db-master не получил ни одного master endpoint"
                 $KUBE get pods -l app.kubernetes.io/name=patroni --namespace default --show-labels || true
                 $KUBE get endpoints classapp-db-master --namespace default -o yaml || true
+                echo "--- Логи основного контейнера patroni (statefulset/classapp-patroni) ---"
+                $KUBE logs statefulset/classapp-patroni -c patroni --namespace default --tail=100 || true
                 CONTAINERS=$($KUBE get pod classapp-patroni-0 --namespace default \
                   -o jsonpath='{.spec.containers[*].name}' 2>/dev/null || true)
                 if printf '%s' "$CONTAINERS" | tr ' ' '\n' | grep -qx 'role-labeler'; then
