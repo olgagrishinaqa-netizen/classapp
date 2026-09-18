@@ -46,7 +46,7 @@ jobs:
             set -e
             sudo mkdir -p /opt/classapp/k8s
             sudo mkdir -p /var/log/classapp /var/log/nginx
-            
+
             # Применение строго ограниченных прав доступа (Security Hardening)
             sudo chown -R ubuntu:ubuntu /opt/classapp
             sudo chown -R ubuntu:ubuntu /var/log/classapp /var/log/nginx
@@ -71,13 +71,13 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_KEY }}
           port: 22
-          # Исключаем передачу SECRET_KEY и DB_PASSWORD как переменных сессии! 
+          # Исключаем передачу SECRET_KEY и DB_PASSWORD как переменных сессии!
           # Передаем только нечувствительные параметры для метаданных
           envs: GRAFANA_ADMIN_PASSWORD
           script: |
             set -euo pipefail
             cd /opt/classapp
-            
+
             # Конфигурация системного CLI K3s
             KUBE="sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl"
             REPO_OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
@@ -87,7 +87,7 @@ jobs:
             $KUBE version --client
 
             # Удалено динамическое создание .env-файла с секретами на диске хоста!
-            # Сейф classapp-secrets теперь персистентен и управляется напрямую в K3s, 
+            # Сейф classapp-secrets теперь персистентен и управляется напрямую в K3s,
             # либо создается один раз администратором.
 
             echo "☸️ ШАГ 1: Автоматическое снятие ограничений планировщика с мастер-ноды..."
@@ -101,6 +101,24 @@ jobs:
 
             echo "⏳ ШАГ 3: Гарантированное ожидание готовности HA-кластера Patroni..."
             $KUBE wait --namespace default --for=condition=Ready pod/classapp-patroni-0 --timeout=90s || true
+
+            echo "⏳ ШАГ 3.1: Ожидание появления endpoint у сервиса classapp-db-master..."
+            for i in $(seq 1 40); do
+              DB_MASTER_ENDPOINTS=$($KUBE get endpoints classapp-db-master --namespace default -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || true)
+              if [ -n "$DB_MASTER_ENDPOINTS" ]; then
+                echo "✅ classapp-db-master endpoints готовы: $DB_MASTER_ENDPOINTS"
+                break
+              fi
+              if [ "$i" -eq 40 ]; then
+                echo "❌ Ошибка: у сервиса classapp-db-master не появились endpoints."
+                $KUBE get service classapp-db-master --namespace default -o wide || true
+                $KUBE get endpoints classapp-db-master --namespace default -o yaml || true
+                $KUBE get pods -l app.kubernetes.io/name=patroni --namespace default --show-labels || true
+                exit 1
+              fi
+              echo "Ожидание endpoints для classapp-db-master ($i/40)..."
+              sleep 3
+            done
 
             echo "☸️ ШАГ 4: Изолированный прогон миграций Alembic отдельным K8s Job (до раскатки нового web-образа)..."
             # Миграции выполняются Job'ом на новом образе ДО обновления deployment/classapp-web.
@@ -118,6 +136,10 @@ jobs:
 
             if ! $KUBE wait --namespace default --for=condition=complete "job/$MIGRATE_JOB_NAME" --timeout=120s; then
               echo "❌ Ошибка: миграции Alembic не завершились успешно! Логи Job:"
+              $KUBE get pods -l job-name="$MIGRATE_JOB_NAME" --namespace default -o wide || true
+              $KUBE describe job "$MIGRATE_JOB_NAME" --namespace default || true
+              $KUBE describe pods -l job-name="$MIGRATE_JOB_NAME" --namespace default || true
+              $KUBE logs "job/$MIGRATE_JOB_NAME" --namespace default -c db-ready-check || true
               $KUBE logs "job/$MIGRATE_JOB_NAME" --namespace default || true
               exit 1
             fi
