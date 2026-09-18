@@ -1,4 +1,4 @@
-name: Deploy to Production VM
+name: Deploy to Production VM1
 
 on:
   workflow_run:
@@ -102,39 +102,46 @@ jobs:
             echo "⏳ ШАГ 3: Гарантированное ожидание готовности HA-кластера Patroni..."
             $KUBE wait --namespace default --for=condition=Ready pod/classapp-patroni-0 --timeout=90s || true
 
-            echo "☸️ ШАГ 4: Развертывание основного веб-приложения и прокси Nginx в K3s..."
-            $KUBE apply -f /opt/classapp/k8s/classapp-web.yaml
-            
-            # Безопасное инжектирование тега свежего коммита напрямую в Deployment API
-            $KUBE set image deployment/classapp-web classapp-web="$K8S_IMAGE" --namespace default
-            
-            $KUBE apply -f /opt/classapp/k8s/classapp-nginx.yaml
+            echo "☸️ ШАГ 4: Изолированный прогон миграций Alembic отдельным K8s Job (до раскатки нового web-образа)..."
+            # Миграции выполняются Job'ом на новом образе ДО обновления deployment/classapp-web.
+            # Это гарантирует, что новая версия приложения не начнет разворачиваться,
+            # пока схема БД не обновится успешно.
+            SHORT_SHA=$(echo "${{ github.event.workflow_run.head_sha }}" | cut -c1-8)
+            MIGRATE_JOB_NAME="classapp-migrate-${SHORT_SHA}"
+            sed \
+              -e "s#__IMAGE__#${K8S_IMAGE}#g" \
+              -e "s#__JOB_NAME__#${MIGRATE_JOB_NAME}#g" \
+              /opt/classapp/k8s/migrate-job.yaml > /tmp/migrate-job-rendered.yaml
 
-            echo "⏳ ШАГ 5: Ожидание успешного прохождения Rolling Update пода Flask..."
-            if ! $KUBE rollout status deployment/classapp-web --namespace default --timeout=90s; then
-              echo "❌ Ошибка: Новая версия Flask-приложения не перешла в статус Ready!"
-              $KUBE get pods -l app=classapp-web --namespace default || true
-              $KUBE describe pods -l app=classapp-web --namespace default || true
+            $KUBE delete job "$MIGRATE_JOB_NAME" --namespace default --ignore-not-found=true
+            $KUBE apply -f /tmp/migrate-job-rendered.yaml
+
+            if ! $KUBE wait --namespace default --for=condition=complete "job/$MIGRATE_JOB_NAME" --timeout=120s; then
+              echo "❌ Ошибка: миграции Alembic не завершились успешно! Логи Job:"
+              $KUBE logs "job/$MIGRATE_JOB_NAME" --namespace default || true
               exit 1
             fi
+            echo "✅ SUCCESS: миграции схемы БД применены Job'ом $MIGRATE_JOB_NAME"
 
-            echo "📦 ШАГ 6: Изолированный прогон миграций Alembic внутри Kubernetes..."
-            set +e
-            RAW_POD_NAME=$($KUBE get pods -l app=classapp-web -o name 2>/dev/null | head -n 1 || true)
-            K8S_WEB_POD=${RAW_POD_NAME#pod/}
-            set -e
-            
-            if [ -n "${K8S_WEB_POD}" ]; then
-              echo "✅ SUCCESS: Запуск alembic upgrade head внутри пода $K8S_WEB_POD"
-              $KUBE exec -i "$K8S_WEB_POD" -- alembic upgrade head
-            else
-              echo "❌ Критическая ошибка: Не удалось определить имя активного пода для миграций СУБД!"
+            echo "☸️ ШАГ 5: Атомарное развертывание web+nginx через Kustomize с новым тегом образа..."
+            # Вместо точечного 'kubectl set image' используем kustomize (встроен в kubectl -k):
+            # один apply синхронно обновляет deployment/classapp-web и nginx с одним и тем же
+            # тегом образа, что дает атомарность релиза и стандартный откат через
+            # 'kubectl rollout undo deployment/classapp-web'.
+            sed -i "s#newTag:.*#newTag: main-${{ github.event.workflow_run.head_sha }}#" /opt/classapp/k8s/kustomization.yaml
+            $KUBE apply -k /opt/classapp/k8s
+
+            echo "⏳ ШАГ 6: Ожидание успешного прохождения Rolling Update пода Flask..."
+            if ! $KUBE rollout status deployment/classapp-web --namespace default --timeout=180s; then
+              echo "❌ Ошибка: Новая версия Flask-приложения не перешла в статус Ready!"
+              $KUBE get pods -l app.kubernetes.io/name=classapp-web --namespace default || true
+              $KUBE describe pods -l app.kubernetes.io/name=classapp-web --namespace default || true
               exit 1
             fi
 
             echo "Проверяем доступность NodePort 30080 через локальный healthcheck..."
             for i in $(seq 1 10); do
-              if curl -fsS --max-time 5 http://127.0.0 >/dev/null 2>&1; then
+              if curl -fsS --max-time 5 http://127.0.0.1:30080/healthz >/dev/null 2>&1; then
                 echo "🚀 ИНФРАСТРУКТУРА KUBERNETES ПОЛНОСТЬЮ РАЗВЕРНУТА И ДОСТУПНА СНАРУЖИ!"
                 break
               fi
@@ -161,6 +168,6 @@ jobs:
         run: |
           if [ "${{ job.status }}" = "success" ]; then STATUS="✅ SUCCESS"; else STATUS="❌ FAILED"; fi
           TEXT="Deploy ${STATUS} — classapp%0ACommit: ${{ github.event.workflow_run.head_sha }}"
-          curl -s -X POST "https://telegram.org{{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
             --data-urlencode "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
             --data-urlencode "text=${TEXT}"

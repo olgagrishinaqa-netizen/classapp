@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: default
+
+resources:
+  - classapp-web.yaml
+  - classapp-nginx.yaml
+
+# newTag ниже переписывается в CI (`sed`) перед `kubectl apply -k`, подставляя
+# актуальный тег свежесобранного образа (main-<sha>). Kustomize гарантирует
+# атомарное применение web+nginx с одним и тем же тегом образа за один apply
+# и оставляет стандартный путь отката: `kubectl rollout undo deployment/classapp-web`.
+images:
+  - name: ghcr.io/olgagrishinaqa-netizen/classapp
+    newTag: latest
