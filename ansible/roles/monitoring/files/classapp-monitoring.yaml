@@ -1,0 +1,95 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: classapp-web
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: classapp
+spec:
+  namespaceSelector:
+    matchNames:
+      - default
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: classapp-web
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: classapp-patroni
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: classapp
+spec:
+  namespaceSelector:
+    matchNames:
+      - default
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: patroni
+  endpoints:
+    - port: patroni-api
+      path: /metrics
+      interval: 15s
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: classapp-grafana-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  classapp-overview.json: |
+    {
+      "title": "Classapp overview",
+      "schemaVersion": 38,
+      "version": 1,
+      "refresh": "15s",
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "HTTP request rate",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+          "targets": [
+            {"expr": "sum(rate(flask_http_request_total[5m]))", "legendFormat": "requests/s"}
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "HTTP 5xx rate",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+          "targets": [
+            {"expr": "sum(rate(flask_http_request_total{status=~\"5..\"}[5m]))", "legendFormat": "5xx/s"}
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "Web pods ready",
+          "gridPos": {"h": 6, "w": 8, "x": 0, "y": 8},
+          "targets": [
+            {"expr": "kube_deployment_status_replicas_available{namespace=\"default\",deployment=\"classapp-web\"}"}
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "Patroni pods ready",
+          "gridPos": {"h": 6, "w": 8, "x": 8, "y": 8},
+          "targets": [
+            {"expr": "kube_statefulset_status_replicas_ready{namespace=\"default\",statefulset=\"classapp-patroni\"}"}
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Node CPU usage",
+          "gridPos": {"h": 6, "w": 8, "x": 16, "y": 8},
+          "targets": [
+            {"expr": "100 - (avg by(instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)", "legendFormat": "{{instance}}"}
+          ]
+        }
+      ]
+    }

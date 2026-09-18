@@ -1,0 +1,8 @@
+---
+k3s_version: v1.30.8+k3s1
+k3s_token: "CHANGE_ME_IN_ANSIBLE_VAULT"
+k3s_api_endpoint: "{{ hostvars[groups['k3s_master'][0]]['ansible_host'] }}"
+k3s_api_port: 6443
+monitoring_namespace: monitoring
+helm_release_name: kube-prometheus-stack
+kubeconfig: /etc/rancher/k3s/k3s.yaml

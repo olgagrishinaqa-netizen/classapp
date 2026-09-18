@@ -1,0 +1,51 @@
+---
+- name: Install base packages
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - git
+      - gnupg
+      - jq
+      - python3
+      - python3-pip
+      - unzip
+    state: present
+    update_cache: true
+
+- name: Install Docker
+  ansible.builtin.apt:
+    name:
+      - docker.io
+      - docker-compose-plugin
+    state: present
+
+- name: Add remote user to docker group
+  ansible.builtin.user:
+    name: "{{ ansible_user }}"
+    groups: docker
+    append: true
+
+- name: Install kubectl
+  ansible.builtin.get_url:
+    url: https://dl.k8s.io/release/v1.30.8/bin/linux/amd64/kubectl
+    dest: /usr/local/bin/kubectl
+    mode: "0755"
+
+- name: Install Helm signing key
+  ansible.builtin.get_url:
+    url: https://packages.buildkite.com/helm-linux/helm-debian/any/helm.asc
+    dest: /etc/apt/keyrings/helm.asc
+    mode: "0644"
+
+- name: Add Helm repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/helm.asc] https://packages.buildkite.com/helm-linux/helm-debian/any/ any main"
+    filename: helm-stable
+    state: present
+
+- name: Install Helm
+  ansible.builtin.apt:
+    name: helm
+    state: present
+    update_cache: true

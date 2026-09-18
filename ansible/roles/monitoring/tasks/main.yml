@@ -1,0 +1,36 @@
+---
+- name: Add prometheus-community Helm repository
+  kubernetes.core.helm_repository:
+    name: prometheus-community
+    repo_url: https://prometheus-community.github.io/helm-charts
+  environment:
+    K8S_AUTH_KUBECONFIG: "{{ kubeconfig }}"
+
+- name: Create monitoring namespace
+  kubernetes.core.k8s:
+    name: "{{ monitoring_namespace }}"
+    api_version: v1
+    kind: Namespace
+    state: present
+  environment:
+    K8S_AUTH_KUBECONFIG: "{{ kubeconfig }}"
+
+- name: Install kube-prometheus-stack
+  kubernetes.core.helm:
+    name: "{{ helm_release_name }}"
+    chart_ref: prometheus-community/kube-prometheus-stack
+    release_namespace: "{{ monitoring_namespace }}"
+    create_namespace: true
+    values_files:
+      - "{{ role_path }}/files/values.yaml"
+    wait: true
+    timeout: 10m
+  environment:
+    K8S_AUTH_KUBECONFIG: "{{ kubeconfig }}"
+
+- name: Apply classapp monitoring resources
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ role_path }}/files/classapp-monitoring.yaml"
+  environment:
+    K8S_AUTH_KUBECONFIG: "{{ kubeconfig }}"

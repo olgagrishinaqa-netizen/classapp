@@ -1,0 +1,47 @@
+---
+- name: Install K3s server on the first master
+  ansible.builtin.shell: |
+    curl -sfL https://get.k3s.io | \
+      INSTALL_K3S_VERSION="{{ k3s_version }}" \
+      K3S_TOKEN="{{ k3s_token }}" \
+      sh -s - server --write-kubeconfig-mode 644 --disable traefik
+  args:
+    creates: /usr/local/bin/k3s
+  when: inventory_hostname == groups['k3s_master'][0]
+
+- name: Install K3s additional servers
+  ansible.builtin.shell: |
+    curl -sfL https://get.k3s.io | \
+      INSTALL_K3S_VERSION="{{ k3s_version }}" \
+      K3S_URL="https://{{ k3s_api_endpoint }}:{{ k3s_api_port }}" \
+      K3S_TOKEN="{{ k3s_token }}" \
+      sh -s - server --disable traefik
+  args:
+    creates: /usr/local/bin/k3s
+  when:
+    - inventory_hostname in groups['k3s_master']
+    - inventory_hostname != groups['k3s_master'][0]
+
+- name: Install K3s agents
+  ansible.builtin.shell: |
+    curl -sfL https://get.k3s.io | \
+      INSTALL_K3S_VERSION="{{ k3s_version }}" \
+      K3S_URL="https://{{ k3s_api_endpoint }}:{{ k3s_api_port }}" \
+      K3S_TOKEN="{{ k3s_token }}" \
+      sh -
+  args:
+    creates: /usr/local/bin/k3s
+  when: inventory_hostname in groups['k3s_worker']
+
+- name: Enable K3s services
+  ansible.builtin.systemd:
+    name: "{{ 'k3s' if inventory_hostname in groups['k3s_master'] else 'k3s-agent' }}"
+    enabled: true
+    state: started
+
+- name: Wait for Kubernetes API on first master
+  ansible.builtin.wait_for:
+    host: "{{ ansible_host }}"
+    port: 6443
+    timeout: 120
+  when: inventory_hostname == groups['k3s_master'][0]

@@ -1,0 +1,9 @@
+yc_token         = "replace-with-short-lived-token"
+cloud_id         = "b1gxxxxxxxxxxxxxxxxxx"
+folder_id        = "b1xxxxxxxxxxxxxxxxxx"
+ssh_public_key   = "ssh-ed25519 AAAA..."
+
+# Restrict SSH to your office/VPN instead of leaving 22/tcp public.
+allowed_ssh_cidrs = ["203.0.113.10/32"]
+
+name_prefix = "classapp"
