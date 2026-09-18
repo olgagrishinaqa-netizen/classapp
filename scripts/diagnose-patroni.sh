@@ -50,7 +50,7 @@ fi
 # 4. Check PATRONI_SCOPE/PATRONI_NAMESPACE consistency across pods (etcd config)
 echo "4️⃣  Patroni scope/namespace consistency (etcd DCS identity):"
 echo "Pod: scope / namespace / etcd hosts"
-kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=patroni -o jsonpath='{range .items[*]}{.metadata.name}{": "}{.spec.containers[?(@.name=="patroni")].env[?(@.name=="PATRONI_SCOPE")].value}{" / "}{.spec.containers[?(@.name=="patroni")].env[?(@.name=="PATRONI_NAMESPACE")].value}{" / "}{.spec.containers[?(@.name=="patroni")].env[?(@.name=="PATRONI_ETCD_HOSTS")].value}{"\n"}{end}' 2>/dev/null || echo "⚠️  Could not read env vars (pods may not exist yet)"
+kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=patroni -o jsonpath='{range .items[*]}{.metadata.name}{": "}{.spec.containers[?(@.name=="patroni")].env[?(@.name=="PATRONI_SCOPE")].value}{" / "}{.spec.containers[?(@.name=="patroni")].env[?(@.name=="PATRONI_NAMESPACE")].value}{" / "}{.spec.containers[?(@.name=="patroni")].env[?(@.name=="ETCD_HOSTS")].value}{"\n"}{end}' 2>/dev/null || echo "⚠️  Could not read env vars (pods may not exist yet)"
 echo ""
 echo "⚠️  scope и namespace ДОЛЖНЫ совпадать на всех подах, иначе split-brain в etcd"
 echo ""

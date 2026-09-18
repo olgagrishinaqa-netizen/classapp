@@ -11,20 +11,25 @@ Exception: Neither srv, hosts, host nor url are defined in etcd section of confi
 
 **Причина:**
 Patroni (образ Zalando Spilo) не может найти конфигурацию для подключения к etcd.
-Этот образ Spilo (`registry.opensource.zalan.do/acid/spilo-15:3.0-p1`) использует
-классический etcd-клиент Patroni (модуль `patroni.dcs.etcd`, протокол v2), а не
-etcd3. Раньше в манифесте по ошибке была указана переменная `PATRONI_ETCD3_HOSTS`
-(она настраивает секцию `etcd3`, а не `etcd`) — Patroni всё равно выбирал модуль
-`etcd` (v2) по умолчанию, но с пустой конфигурацией, и падал с этой ошибкой.
-Правильная переменная для данного образа — `PATRONI_ETCD_HOSTS` (без "3").
+Для этого образа Spilo (`registry.opensource.zalan.do/acid/spilo-15:3.0-p1`) DCS-настройки
+считываются bootstrap-скриптом `configure_spilo.py` из переменных вида `ETCD_HOST`,
+`ETCD_HOSTS`, `ETCD3_HOSTS` и т.п. — **без** префикса `PATRONI_`.
+Скрипт буквально делает разбор по первому символу `_`, поэтому:
+- `ETCD_HOSTS` → распознаётся как секция `etcd`;
+- `PATRONI_ETCD_HOSTS` → распознаётся как секция `patroni` и игнорируется;
+- `PATRONI_ETCD3_HOSTS` → тоже не попадает в секцию `etcd`.
+
+Из-за этого в итоговом `patroni.yaml` секция `etcd` оставалась пустой, и Patroni
+падал с ошибкой `Neither srv, hosts, host nor url are defined in etcd section of config`.
+Правильная переменная для данного образа — `ETCD_HOSTS=etcd-service:2379`.
 
 **Решение:**
 1. Проверьте переменные окружения в поде:
 ```bash
 kubectl exec -it pod/classapp-patroni-0 -c patroni -- env | grep PATRONI_ETCD
 ```
-   Должна быть установлена именно `PATRONI_ETCD_HOSTS=etcd-service:2379`
-   (а не `PATRONI_ETCD3_HOSTS`).
+   Должна быть установлена именно `ETCD_HOSTS=etcd-service:2379`
+   (а не `PATRONI_ETCD_HOSTS` или `PATRONI_ETCD3_HOSTS`).
 
 2. Убедитесь, что `PATRONI_SCOPE` и `PATRONI_NAMESPACE` **одинаковы** на всех
    подах StatefulSet — иначе новый под создаст отдельный кластер в etcd вместо

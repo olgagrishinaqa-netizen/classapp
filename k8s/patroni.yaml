@@ -119,7 +119,7 @@ spec:
               value: classapp-ha
             - name: PATRONI_NAMESPACE
               value: default
-            - name: PATRONI_ETCD_HOSTS
+            - name: ETCD_HOSTS
               value: etcd-service:2379
             - name: PATRONI_POSTGRESQL_DATA_DIR
               value: /data/patroni
