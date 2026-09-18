@@ -11,14 +11,20 @@ Exception: Neither srv, hosts, host nor url are defined in etcd section of confi
 
 **Причина:**
 Patroni (образ Zalando Spilo) не может найти конфигурацию для подключения к etcd.
-Обычно это значит, что переменная окружения `PATRONI_ETCD3_HOSTS` не установлена
-или под получил её пустой из-за ошибки в манифесте/секрете.
+Этот образ Spilo (`registry.opensource.zalan.do/acid/spilo-15:3.0-p1`) использует
+классический etcd-клиент Patroni (модуль `patroni.dcs.etcd`, протокол v2), а не
+etcd3. Раньше в манифесте по ошибке была указана переменная `PATRONI_ETCD3_HOSTS`
+(она настраивает секцию `etcd3`, а не `etcd`) — Patroni всё равно выбирал модуль
+`etcd` (v2) по умолчанию, но с пустой конфигурацией, и падал с этой ошибкой.
+Правильная переменная для данного образа — `PATRONI_ETCD_HOSTS` (без "3").
 
 **Решение:**
 1. Проверьте переменные окружения в поде:
 ```bash
 kubectl exec -it pod/classapp-patroni-0 -c patroni -- env | grep PATRONI_ETCD
 ```
+   Должна быть установлена именно `PATRONI_ETCD_HOSTS=etcd-service:2379`
+   (а не `PATRONI_ETCD3_HOSTS`).
 
 2. Убедитесь, что `PATRONI_SCOPE` и `PATRONI_NAMESPACE` **одинаковы** на всех
    подах StatefulSet — иначе новый под создаст отдельный кластер в etcd вместо
@@ -32,10 +38,15 @@ kubectl get pods -l app.kubernetes.io/name=patroni -o jsonpath='{range .items[*]
 kubectl exec -it pod/classapp-patroni-0 -c patroni -- nc -zv etcd-service 2379
 ```
 
-4. Если манифест изменился, переприменените его:
+4. Если манифест изменился, переприменените его и пересоздайте под (StatefulSet
+   не всегда перезапускает уже существующий под только из-за смены env var в
+   рамках одного и того же `kubectl apply`, а `emptyDir`-конфиг Patroni внутри
+   контейнера может быть закэширован с прошлого (неудачного) старта):
 ```bash
 kubectl apply -f k8s/patroni.yaml
+kubectl delete pod classapp-patroni-0 classapp-patroni-1 --ignore-not-found
 ```
+
 
 ---
 
