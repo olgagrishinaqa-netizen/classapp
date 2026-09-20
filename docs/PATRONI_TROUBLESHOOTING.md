@@ -208,6 +208,33 @@ kubectl delete pod classapp-patroni-0
 
 ---
 
+### 3.2. `StatefulSet ... spec: Forbidden` при переходе на `volumeClaimTemplates`
+
+**Симптомы:**
+```
+The StatefulSet "classapp-patroni" is invalid: spec: Forbidden:
+updates to statefulset spec for fields other than ... are forbidden
+```
+
+**Причина:**
+Поля дисков (`volumeClaimTemplates`) у существующего StatefulSet immutable.
+Kubernetes не применяет такие изменения через обычный `kubectl apply`.
+
+**Решение (безопасный алгоритм через orphan):**
+```bash
+kubectl scale statefulset classapp-patroni -n default --replicas=0
+kubectl delete statefulset classapp-patroni -n default --cascade=orphan
+kubectl apply -f k8s/patroni.yaml
+kubectl rollout status statefulset/classapp-patroni -n default --timeout=300s
+kubectl get pvc -n default | grep patroni-data
+```
+
+Если обновление выполняется из CI/CD, этот сценарий должен быть автоматизирован
+в `deploy.yml`: при детекте immutable-ошибки выполняется пересоздание StatefulSet
+через `--cascade=orphan` и повторное применение манифеста.
+
+---
+
 ### 4. classapp-db-master Service не имеет endpoints
 
 **Симптомы:**
@@ -357,9 +384,11 @@ kubectl get secret classapp-secrets -o yaml
 ```bash
 kubectl create secret generic classapp-secrets \
   --from-literal=db-password='CHANGE_ME' \
+  --from-literal=database-url='postgresql://postgres:CHANGE_ME@classapp-db-master:5432/classapp' \
   --from-literal=secret-key='CHANGE_ME' \
   --from-literal=admin-phone='79990000000' \
-  --from-literal=admin-password='CHANGE_ME'
+  --from-literal=admin-password='CHANGE_ME' \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 5. Проверьте, что БД `classapp` существует (initContainer `db-ready-check`

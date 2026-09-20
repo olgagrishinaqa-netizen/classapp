@@ -136,7 +136,20 @@ jobs:
           echo "☸️ ШАГ 2: Идемпотентное применение манифестов инфраструктуры СУБД..."
           $KUBE apply -f /opt/classapp/k8s/etcd.yaml
           $KUBE apply -f /opt/classapp/k8s/services.yaml
-          $KUBE apply -f /opt/classapp/k8s/patroni.yaml
+          PATRONI_APPLY_ERR=$(mktemp)
+          if ! $KUBE apply -f /opt/classapp/k8s/patroni.yaml 2>"$PATRONI_APPLY_ERR"; then
+            if grep -q "updates to statefulset spec.*are forbidden" "$PATRONI_APPLY_ERR"; then
+              echo "ℹ️ Обнаружено immutable-изменение StatefulSet (например, переход на PVC). Выполняем безопасную пересборку через orphan-поды..."
+              $KUBE scale statefulset/classapp-patroni --namespace default --replicas=0 || true
+              $KUBE delete statefulset classapp-patroni --namespace default --cascade=orphan
+              $KUBE apply -f /opt/classapp/k8s/patroni.yaml
+            else
+              cat "$PATRONI_APPLY_ERR"
+              rm -f "$PATRONI_APPLY_ERR"
+              exit 1
+            fi
+          fi
+          rm -f "$PATRONI_APPLY_ERR"
           
           echo "⏳ ШАГ 3: Ожидание обновления StatefulSet Patroni и готовности HA-кластера..."
           if ! $KUBE rollout status statefulset/classapp-patroni --namespace default --timeout=180s; then
@@ -189,6 +202,7 @@ jobs:
           if [ -f /opt/classapp/k8s/kustomization.yaml ]; then
             sed -i "s#newTag:.*#newTag: main-${COMMIT_SHA}#" /opt/classapp/k8s/kustomization.yaml
             $KUBE apply -k /opt/classapp/k8s
+            $KUBE set image deployment/classapp-web classapp-web="$K8S_IMAGE" --namespace default
           else
             # Fallback, если kustomization.yaml отсутствует
                 $KUBE apply -f /opt/classapp/k8s/classapp-web.yaml

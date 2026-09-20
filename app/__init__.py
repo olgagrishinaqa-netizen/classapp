@@ -4,7 +4,7 @@ import sys
 
 from flask import Flask, jsonify
 from pythonjsonlogger.json import JsonFormatter
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 from werkzeug.utils import import_string
 from werkzeug.exceptions import HTTPException
 
@@ -81,28 +81,34 @@ def create_app(config_object=None):
         # In production schema changes are applied exclusively by Alembic before web starts.
         if app.config.get("AUTO_CREATE_SCHEMA", app.testing or app.debug):
             db.create_all()
-        admin_phone = User.normalize_phone(app.config.get("ADMIN_PHONE", "79990000000"))
-        admin_name = app.config.get("ADMIN_NAME", "Администратор")
-        admin_password = app.config.get("ADMIN_PASSWORD", "admin123")
-        reset_admin_password = bool(app.config.get("ADMIN_RESET_PASSWORD_ON_BOOT", False))
-        admin = User.query.filter_by(phone=admin_phone).first()
-        if admin is None:
-            admin = User(
-                full_name=admin_name,
-                phone=admin_phone,
-                role="admin",
-            )
-            db.session.add(admin)
-            admin.set_password(admin_password)
-        else:
-            admin.full_name = admin_name
-            admin.role = "admin"
-            if not admin.password_hash:
+        if inspect(db.engine).has_table(User.__tablename__):
+            admin_phone = User.normalize_phone(app.config.get("ADMIN_PHONE", "79990000000"))
+            admin_name = app.config.get("ADMIN_NAME", "Администратор")
+            admin_password = app.config.get("ADMIN_PASSWORD", "admin123")
+            reset_admin_password = bool(app.config.get("ADMIN_RESET_PASSWORD_ON_BOOT", False))
+            admin = User.query.filter_by(phone=admin_phone).first()
+            if admin is None:
+                admin = User(
+                    full_name=admin_name,
+                    phone=admin_phone,
+                    role="admin",
+                )
+                db.session.add(admin)
                 admin.set_password(admin_password)
-            elif not admin.check_password(admin_password) and reset_admin_password:
-                admin.set_password(admin_password)
+            else:
+                admin.full_name = admin_name
+                admin.role = "admin"
+                if not admin.password_hash:
+                    admin.set_password(admin_password)
+                elif not admin.check_password(admin_password) and reset_admin_password:
+                    admin.set_password(admin_password)
 
-        db.session.commit()
+            db.session.commit()
+        else:
+            app.logger.info(
+                "Admin bootstrap skipped: table '%s' does not exist yet; waiting for Alembic migrations.",
+                User.__tablename__,
+            )
 
     if PrometheusMetrics is not None:
         PrometheusMetrics(app)

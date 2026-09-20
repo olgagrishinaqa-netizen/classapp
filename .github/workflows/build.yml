@@ -1,9 +1,9 @@
 name: Build and Push to GHCR
 
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   workflow_dispatch: {}
 
 concurrency:
@@ -21,10 +21,32 @@ env:
 jobs:
   build:
     name: Build and Push Docker Image
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Resolve commit metadata
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            COMMIT_SHA="${{ github.event.workflow_run.head_sha }}"
+            BRANCH_NAME="${{ github.event.workflow_run.head_branch }}"
+          else
+            COMMIT_SHA="${{ github.sha }}"
+            BRANCH_NAME="${{ github.ref_name }}"
+          fi
+
+          SAFE_BRANCH=$(echo "$BRANCH_NAME" | tr '/' '-' | tr '[:upper:]' '[:lower:]')
+
+          echo "commit_sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
+          echo "branch_name=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
+          echo "safe_branch=$SAFE_BRANCH" >> "$GITHUB_OUTPUT"
 
       # Переводим имя владельца репозитория в нижний регистр, чтобы избежать синтаксических ошибок Docker
       - name: Lowercase Repository Owner
@@ -32,13 +54,6 @@ jobs:
         run: echo "owner=${OWNER,,}" >> $GITHUB_OUTPUT
         env:
           OWNER: ${{ github.repository_owner }}
-
-      # Тег по ветке — нужен, т.к. теперь сборка идёт на любую ветку, а не только main
-      - name: Sanitize branch name for tag
-        id: branch_tag
-        run: |
-          SAFE_BRANCH=$(echo "${{ github.ref_name }}" | tr '/' '-' | tr '[:upper:]' '[:lower:]')
-          echo "safe_branch=$SAFE_BRANCH" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -56,17 +71,17 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ steps.repo_owner.outputs.owner }}/${{ env.IMAGE_NAME }}:${{ steps.branch_tag.outputs.safe_branch }}-${{ github.sha }}
+            ghcr.io/${{ steps.repo_owner.outputs.owner }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.safe_branch }}-${{ steps.meta.outputs.commit_sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       # 'latest' обновляем только с main — без пересборки, просто доп. тег на тот же манифест
       - name: Tag as latest (main only)
-        if: github.ref_name == 'main'
+        if: steps.meta.outputs.branch_name == 'main'
         run: |
           docker buildx imagetools create \
             -t ghcr.io/${{ steps.repo_owner.outputs.owner }}/${{ env.IMAGE_NAME }}:latest \
-            ghcr.io/${{ steps.repo_owner.outputs.owner }}/${{ env.IMAGE_NAME }}:${{ steps.branch_tag.outputs.safe_branch }}-${{ github.sha }}
+            ghcr.io/${{ steps.repo_owner.outputs.owner }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.safe_branch }}-${{ steps.meta.outputs.commit_sha }}
 
       - name: Notify build result
         if: always()
@@ -75,5 +90,5 @@ jobs:
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
             -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
             -d text="Build ${STATUS} — classapp
-          Branch: ${{ github.ref_name }}
-          Image: ${{ steps.branch_tag.outputs.safe_branch }}-${{ github.sha }}"
+          Branch: ${{ steps.meta.outputs.branch_name }}
+          Image: ${{ steps.meta.outputs.safe_branch }}-${{ steps.meta.outputs.commit_sha }}"
