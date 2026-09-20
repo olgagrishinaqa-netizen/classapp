@@ -47,8 +47,7 @@ kubectl exec -it pod/classapp-patroni-0 -c patroni -- nc -zv etcd-service 2379
 
 4. Если манифест изменился, переприменените его и пересоздайте под (StatefulSet
    не всегда перезапускает уже существующий под только из-за смены env var в
-   рамках одного и того же `kubectl apply`, а `emptyDir`-конфиг Patroni внутри
-   контейнера может быть закэширован с прошлого (неудачного) старта):
+   рамках одного и того же `kubectl apply`):
 ```bash
 kubectl apply -f k8s/patroni.yaml
 kubectl delete pod classapp-patroni-0 classapp-patroni-1 --ignore-not-found
@@ -358,7 +357,9 @@ kubectl get secret classapp-secrets -o yaml
 ```bash
 kubectl create secret generic classapp-secrets \
   --from-literal=db-password='CHANGE_ME' \
-  --from-literal=secret-key='CHANGE_ME'
+  --from-literal=secret-key='CHANGE_ME' \
+  --from-literal=admin-phone='79990000000' \
+  --from-literal=admin-password='CHANGE_ME'
 ```
 
 5. Проверьте, что БД `classapp` существует (initContainer `db-ready-check`

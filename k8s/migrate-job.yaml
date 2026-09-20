@@ -1,9 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  # __JOB_NAME__ подставляется в CI коротким SHA коммита, чтобы каждый релиз
-  # создавал свой уникальный Job и не конфликтовал с предыдущими прогонами.
-  name: __JOB_NAME__
+  name: classapp-migrate
   namespace: default
   labels:
     app.kubernetes.io/name: classapp-migrate
@@ -55,10 +53,8 @@ spec:
                   key: db-password
       containers:
         - name: classapp-migrate
-          # __IMAGE__ подставляется в CI на новый образ приложения, который еще
-          # не был раскатан в deployment/classapp-web — миграции применяются
-          # к схеме БД до того, как новая версия веб-пода начнет разворачиваться.
-          image: __IMAGE__
+          # Базовый тег заменяется в CI через `kubectl set image` на образ текущего коммита.
+          image: ghcr.io/olgagrishinaqa-netizen/classapp:latest
           imagePullPolicy: IfNotPresent
           command: ["alembic", "upgrade", "head"]
           env:

@@ -42,8 +42,18 @@ spec:
               value: classapp
             - name: POSTGRES_USER
               value: postgres
-            - name: POSTGRES_PASSWORD
-              value: "$(DB_PASSWORD)"
+            - name: ADMIN_PHONE
+              valueFrom:
+                secretKeyRef:
+                  name: classapp-secrets
+                  key: admin-phone
+                  optional: true
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: classapp-secrets
+                  key: admin-password
+                  optional: true
             - name: SECRET_KEY
               valueFrom:
                 secretKeyRef:

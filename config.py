@@ -10,6 +10,11 @@ class BaseConfig:
     ADMIN_NAME = os.getenv("ADMIN_NAME", "Администратор")
     ADMIN_PHONE = os.getenv("ADMIN_PHONE", "79990000000")
     ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
+    ADMIN_RESET_PASSWORD_ON_BOOT = str(os.getenv("ADMIN_RESET_PASSWORD_ON_BOOT", "False")).lower() in (
+        "1",
+        "true",
+        "yes",
+    )
     UPLOAD_FOLDER = os.getenv("UPLOAD_FOLDER", os.path.join(os.getcwd(), "uploads"))
     APP_JSON_LOG_PATH = os.getenv("APP_JSON_LOG_PATH", "/var/log/classapp/app.json.log")
 

@@ -222,6 +222,15 @@ spec:
               memory: 16Mi
             limits:
               memory: 32Mi
-      volumes:
-        - name: patroni-data
-          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: patroni-data
+        labels:
+          app.kubernetes.io/name: patroni
+          app.kubernetes.io/part-of: classapp
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi
