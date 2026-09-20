@@ -34,11 +34,6 @@ spec:
                 secretKeyRef:
                   name: classapp-secrets
                   key: db-password
-            - name: DATABASE_URL
-              valueFrom:
-                secretKeyRef:
-                  name: classapp-secrets
-                  key: database-url
             - name: POSTGRES_HOST
               value: classapp-db-master
             - name: POSTGRES_DB

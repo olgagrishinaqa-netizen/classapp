@@ -158,14 +158,15 @@ workers. Секрет `k3s_token` рекомендуется хранить в A
   Для принудительного сброса используйте `ADMIN_RESET_PASSWORD_ON_BOOT=true`.
 
 - **Секреты веб-приложения**: `classapp-web` и `classapp-migrate` читают
-  `DATABASE_URL`, `SECRET_KEY`, `ADMIN_PHONE`, `ADMIN_PASSWORD` и `DB_PASSWORD`
+  `DB_PASSWORD`, `SECRET_KEY`, `ADMIN_PHONE`, `ADMIN_PASSWORD`
   из секрета `classapp-secrets` через `secretKeyRef`.
+  Переменная `DATABASE_URL` собирается автоматически из `POSTGRES_HOST/POSTGRES_DB/POSTGRES_USER`
+  и `DB_PASSWORD` в `entrypoint.sh` (с URL-encoding пароля).
 
 Пример создания/обновления секрета:
 ```bash
 kubectl -n default create secret generic classapp-secrets \
   --from-literal=db-password='CHANGE_ME' \
-  --from-literal=database-url='postgresql://postgres:CHANGE_ME@classapp-db-master:5432/classapp' \
   --from-literal=secret-key='CHANGE_ME' \
   --from-literal=admin-phone='79990000000' \
   --from-literal=admin-password='CHANGE_ME' \
