@@ -56,18 +56,30 @@ spec:
           # Базовый тег заменяется в CI через `kubectl set image` на образ текущего коммита.
           image: ghcr.io/olgagrishinaqa-netizen/classapp:latest
           imagePullPolicy: IfNotPresent
-          command: ["alembic", "upgrade", "head"]
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              ENCODED_DB_PASSWORD="$(python3 - <<'PY'
+              import os
+              from urllib.parse import quote
+              print(quote(os.environ["DB_PASSWORD"], safe=""))
+              PY
+              )"
+              export DATABASE_URL="postgresql://${POSTGRES_USER}:${ENCODED_DB_PASSWORD}@${POSTGRES_HOST}:5432/${POSTGRES_DB}"
+              alembic upgrade head
           env:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: classapp-secrets
                   key: db-password
-            - name: DATABASE_URL
-              valueFrom:
-                secretKeyRef:
-                  name: classapp-secrets
-                  key: database-url
+            - name: POSTGRES_HOST
+              value: classapp-db-master
+            - name: POSTGRES_DB
+              value: classapp
+            - name: POSTGRES_USER
+              value: postgres
             - name: SECRET_KEY
               valueFrom:
                 secretKeyRef:

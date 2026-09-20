@@ -4,7 +4,24 @@ set -euo pipefail
 # Fail fast if required env vars are missing
 : "${SECRET_KEY:?SECRET_KEY is required}"
 : "${DB_PASSWORD:?DB_PASSWORD is required}"
-: "${DATABASE_URL:?DATABASE_URL is required}"
+
+# Build DATABASE_URL automatically when it is not provided explicitly.
+if [ -z "${DATABASE_URL:-}" ]; then
+  : "${POSTGRES_HOST:=classapp-db-master}"
+  : "${POSTGRES_DB:=classapp}"
+  : "${POSTGRES_USER:=postgres}"
+
+  ENCODED_DB_PASSWORD="$(python3 - <<'PY'
+import os
+from urllib.parse import quote
+
+print(quote(os.environ["DB_PASSWORD"], safe=""))
+PY
+)"
+
+  export DATABASE_URL="postgresql://${POSTGRES_USER}:${ENCODED_DB_PASSWORD}@${POSTGRES_HOST}:5432/${POSTGRES_DB}"
+  echo "DATABASE_URL was not provided, generated from POSTGRES_* and DB_PASSWORD"
+fi
 
 # Wait for the database to be ready using psycopg2
 echo "Waiting for database to become available..."
