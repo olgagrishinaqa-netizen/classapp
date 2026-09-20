@@ -174,7 +174,7 @@ jobs:
           
           if [ -f /opt/classapp/k8s/migrate-job.yaml ]; then
             $KUBE apply -f /opt/classapp/k8s/migrate-job.yaml
-            $KUBE set image job/classapp-migrate web="$K8S_IMAGE" --namespace default || true
+            $KUBE set image job/classapp-migrate classapp-migrate="$K8S_IMAGE" --namespace default
             
             echo "Ожидаем успешного завершения миграций Alembic..."
             if ! $KUBE wait --for=condition=complete job/classapp-migrate --namespace default --timeout=120s; then

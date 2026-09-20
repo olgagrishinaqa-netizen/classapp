@@ -134,6 +134,8 @@ workers. Секрет `k3s_token` рекомендуется хранить в A
 - **Patroni StatefulSet** (2 реплики): каждый pod имеет:
   - readinessProbe + livenessProbe с `initialDelaySeconds: 60-90` для ожидания инициализации БД
   - Два Service: `classapp-db-master` (для записи) и `classapp-db-replica` (для чтения)
+  - `volumeClaimTemplates` (`patroni-data`), чтобы данные PostgreSQL сохранялись между
+    пересозданиями pod'ов и не терялись при rolling update/eviction
   - Spilo сам управляет правами на `/data`, поэтому дополнительные initContainer
     или `fsGroup` не требуются.
 
@@ -150,6 +152,10 @@ workers. Секрет `k3s_token` рекомендуется хранить в A
   создаёт дополнительную БД автоматически из переменных окружения. Поэтому
   `k8s/migrate-job.yaml` перед запуском Alembic идемпотентно выполняет
   `CREATE DATABASE classapp`, если она ещё не существует.
+
+- **Bootstrap администратора**: приложение создаёт администратора при первом запуске,
+  но по умолчанию не перезаписывает существующий пароль на каждом рестарте pod'а.
+  Для принудительного сброса используйте `ADMIN_RESET_PASSWORD_ON_BOOT=true`.
 
 Проверка готовности Patroni:
 ```bash

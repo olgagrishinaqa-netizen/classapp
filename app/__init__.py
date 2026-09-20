@@ -84,6 +84,7 @@ def create_app(config_object=None):
         admin_phone = User.normalize_phone(app.config.get("ADMIN_PHONE", "79990000000"))
         admin_name = app.config.get("ADMIN_NAME", "Администратор")
         admin_password = app.config.get("ADMIN_PASSWORD", "admin123")
+        reset_admin_password = bool(app.config.get("ADMIN_RESET_PASSWORD_ON_BOOT", False))
         admin = User.query.filter_by(phone=admin_phone).first()
         if admin is None:
             admin = User(
@@ -92,12 +93,14 @@ def create_app(config_object=None):
                 role="admin",
             )
             db.session.add(admin)
+            admin.set_password(admin_password)
         else:
             admin.full_name = admin_name
             admin.role = "admin"
-
-        if not admin.password_hash or not admin.check_password(admin_password):
-            admin.set_password(admin_password)
+            if not admin.password_hash:
+                admin.set_password(admin_password)
+            elif not admin.check_password(admin_password) and reset_admin_password:
+                admin.set_password(admin_password)
 
         db.session.commit()
 
