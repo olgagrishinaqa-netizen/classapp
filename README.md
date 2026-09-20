@@ -157,6 +157,21 @@ workers. Секрет `k3s_token` рекомендуется хранить в A
   но по умолчанию не перезаписывает существующий пароль на каждом рестарте pod'а.
   Для принудительного сброса используйте `ADMIN_RESET_PASSWORD_ON_BOOT=true`.
 
+- **Секреты веб-приложения**: `classapp-web` и `classapp-migrate` читают
+  `DATABASE_URL`, `SECRET_KEY`, `ADMIN_PHONE`, `ADMIN_PASSWORD` и `DB_PASSWORD`
+  из секрета `classapp-secrets` через `secretKeyRef`.
+
+Пример создания/обновления секрета:
+```bash
+kubectl -n default create secret generic classapp-secrets \
+  --from-literal=db-password='CHANGE_ME' \
+  --from-literal=database-url='postgresql://postgres:CHANGE_ME@classapp-db-master:5432/classapp' \
+  --from-literal=secret-key='CHANGE_ME' \
+  --from-literal=admin-phone='79990000000' \
+  --from-literal=admin-password='CHANGE_ME' \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
 Проверка готовности Patroni:
 ```bash
 kubectl get pods -l app.kubernetes.io/name=patroni --show-labels

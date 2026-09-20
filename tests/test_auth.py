@@ -1,3 +1,5 @@
+from sqlalchemy import inspect
+
 from app import create_app
 from app.models import Expense, ExpenseReport, News, Payment, Task, User
 
@@ -356,3 +358,25 @@ def test_admin_password_can_be_reset_on_bootstrap_when_enabled(tmp_path):
         admin = User.query.filter_by(phone="79990000000").first()
         assert admin is not None
         assert admin.check_password("admin123")
+
+
+def test_admin_bootstrap_is_skipped_when_user_table_does_not_exist(tmp_path):
+    db_path = tmp_path / "bootstrap-no-user-table.db"
+
+    class BootstrapConfig:
+        TESTING = True
+        DEBUG = False
+        SECRET_KEY = "bootstrap-secret"
+        WTF_CSRF_ENABLED = False
+        SQLALCHEMY_DATABASE_URI = f"sqlite:///{db_path}"
+        SQLALCHEMY_TRACK_MODIFICATIONS = False
+        AUTO_CREATE_SCHEMA = False
+        ADMIN_PHONE = "79990000000"
+        ADMIN_NAME = "Администратор"
+        ADMIN_PASSWORD = "admin123"
+
+    app = create_app(config_object=BootstrapConfig)
+    with app.app_context():
+        from app.extensions import db
+
+        assert not inspect(db.engine).has_table("user")

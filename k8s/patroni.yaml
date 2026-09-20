@@ -80,7 +80,7 @@ metadata:
 spec:
   serviceName: classapp-patroni
   replicas: 2
-  podManagementPolicy: Parallel
+  podManagementPolicy: OrderedReady
   updateStrategy:
     type: RollingUpdate
   selector:
