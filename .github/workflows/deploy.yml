@@ -182,66 +182,109 @@ jobs:
             sleep 2
           done
           
-          echo "☸️ ШАГ 4: Изолированный прогон миграций Alembic отдельным K8s Job..."
+          echo "☸️ ШАГ 4: Нормализация classapp-secrets (включая database-url)..."
+          DB_PASSWORD_B64="$($KUBE get secret classapp-secrets --namespace default -o jsonpath='{.data.db-password}' 2>/dev/null || true)"
+          SECRET_KEY_B64="$($KUBE get secret classapp-secrets --namespace default -o jsonpath='{.data.secret-key}' 2>/dev/null || true)"
+          ADMIN_PHONE_B64="$($KUBE get secret classapp-secrets --namespace default -o jsonpath='{.data.admin-phone}' 2>/dev/null || true)"
+          ADMIN_PASSWORD_B64="$($KUBE get secret classapp-secrets --namespace default -o jsonpath='{.data.admin-password}' 2>/dev/null || true)"
+
+          if [ -z "${DB_PASSWORD_B64}" ] || [ -z "${SECRET_KEY_B64}" ]; then
+            echo "❌ Secret classapp-secrets должен содержать как минимум keys: db-password, secret-key"
+            exit 1
+          fi
+
+          DB_PASSWORD="$(printf '%s' "$DB_PASSWORD_B64" | base64 -d)"
+          SECRET_KEY="$(printf '%s' "$SECRET_KEY_B64" | base64 -d)"
+          ADMIN_PHONE=""
+          ADMIN_PASSWORD=""
+          if [ -n "${ADMIN_PHONE_B64}" ]; then
+            ADMIN_PHONE="$(printf '%s' "$ADMIN_PHONE_B64" | base64 -d)"
+          fi
+          if [ -n "${ADMIN_PASSWORD_B64}" ]; then
+            ADMIN_PASSWORD="$(printf '%s' "$ADMIN_PASSWORD_B64" | base64 -d)"
+          fi
+
+          ENCODED_DB_PASSWORD="$(DB_PASSWORD="$DB_PASSWORD" python3 -c 'import os,urllib.parse; print(urllib.parse.quote(os.environ["DB_PASSWORD"], safe=""))')"
+          DATABASE_URL="postgresql://postgres:${ENCODED_DB_PASSWORD}@classapp-db-master:5432/classapp?sslmode=require"
+
+          SECRET_ARGS=(
+            --from-literal=db-password="$DB_PASSWORD"
+            --from-literal=secret-key="$SECRET_KEY"
+            --from-literal=database-url="$DATABASE_URL"
+          )
+          if [ -n "${ADMIN_PHONE}" ]; then
+            SECRET_ARGS+=(--from-literal=admin-phone="$ADMIN_PHONE")
+          fi
+          if [ -n "${ADMIN_PASSWORD}" ]; then
+            SECRET_ARGS+=(--from-literal=admin-password="$ADMIN_PASSWORD")
+          fi
+
+          $KUBE create secret generic classapp-secrets \
+            --namespace default \
+            "${SECRET_ARGS[@]}" \
+            --dry-run=client -o yaml | $KUBE apply -f -
+
+          echo "☸️ ШАГ 5: Изолированный прогон миграций Alembic отдельным K8s Job..."
           $KUBE delete job classapp-migrate --namespace default --ignore-not-found=true
-          
+
           if [ -f /opt/classapp/k8s/migrate-job.yaml ]; then
-            $KUBE apply -f /opt/classapp/k8s/migrate-job.yaml
-            $KUBE set image job/classapp-migrate classapp-migrate="$K8S_IMAGE" --namespace default
-            
+            sed "s#ghcr.io/olgagrishinaqa-netizen/classapp:latest#${K8S_IMAGE}#g" /opt/classapp/k8s/migrate-job.yaml | $KUBE apply -f -
             echo "Ожидаем успешного завершения миграций Alembic..."
-            if ! $KUBE wait --for=condition=complete job/classapp-migrate --namespace default --timeout=120s; then
+            if ! $KUBE wait --for=condition=complete job/classapp-migrate --namespace default --timeout=300s; then
               echo "❌ Ошибка: Миграции Alembic через K8s Job завершились сбоем!"
               $KUBE logs job/classapp-migrate --all-containers=true --namespace default || true
+              $KUBE describe job classapp-migrate --namespace default || true
               exit 1
             fi
             echo "✅ K8s migrations completed successfully!"
           fi
 
-          echo "☸️ ШАГ 5: Атомарное развертывание web+nginx через Kustomize с новым тегом образа..."
+          echo "☸️ ШАГ 6: Атомарное развертывание web+nginx через Kustomize с новым тегом образа..."
           if [ -f /opt/classapp/k8s/kustomization.yaml ]; then
             sed -i "s#newTag:.*#newTag: main-${COMMIT_SHA}#" /opt/classapp/k8s/kustomization.yaml
             $KUBE apply -k /opt/classapp/k8s
-            $KUBE set image deployment/classapp-web classapp-web="$K8S_IMAGE" --namespace default
           else
             # Fallback, если kustomization.yaml отсутствует
-                $KUBE apply -f /opt/classapp/k8s/classapp-web.yaml
-                $KUBE set image deployment/classapp-web classapp-web="$K8S_IMAGE" --namespace default
-                $KUBE apply -f /opt/classapp/k8s/classapp-nginx.yaml
+            $KUBE apply -f /opt/classapp/k8s/classapp-web.yaml
+            $KUBE apply -f /opt/classapp/k8s/classapp-nginx.yaml
+          fi
+          $KUBE set image deployment/classapp-web classapp-web="$K8S_IMAGE" --namespace default
+
+          echo "⏳ ШАГ 7: Ожидание успешного прохождения Rolling Update пода Flask..."
+          if ! $KUBE rollout status deployment/classapp-web --namespace default --timeout=300s; then
+            echo "❌ Ошибка: Новая версия Flask-приложения не перешла в статус Ready!"
+            $KUBE get pods -l app.kubernetes.io/name=classapp-web --namespace default || true
+            exit 1
+          fi
+
+          echo "Проверяем доступность NodePort 30080 через локальный healthcheck..."
+          echo "⏳ Даем 10 секунд на прогрев пула соединений с Patroni СУБД..."
+          sleep 10
+
+          for i in $(seq 1 15); do
+            # Используем ключ -s, игнорируя 502/504 на этапе линковки баз данных
+            if curl -fsS --max-time 5 http://127.0.0.1:30080/healthz >/dev/null 2>&1; then
+              echo "🚀 ИНФРАСТРУКТУРА KUBERNETES ПОЛНОСТЬЮ РАЗВЕРНУТА И ДОСТУПНА СНАРУЖИ!"
+              break
+            fi
+            if [ "$i" -eq 15 ]; then
+              echo "⚠️ Предупреждение: NodePort ответил таймаутом шлюза, но поды успешно запущены."
+            fi
+            echo "Ожидание прогрева веб-сервера и линковки баз данных ($i/15)..."
+            sleep 4
+          done
+
+          echo "🧹 ШАГ 8: Безопасная фоновая очистка неиспользуемых слоев и логов..."
+          (
+            sudo journalctl --vacuum-time=7d >/dev/null 2>&1 || true
+            if sudo k3s crictl images >/dev/null 2>&1; then
+              UNREF_IMAGES="$(sudo k3s crictl images -q --unreferenced || true)"
+              if [ -n "${UNREF_IMAGES}" ]; then
+                sudo k3s crictl rmi ${UNREF_IMAGES} >/dev/null 2>&1 || true
               fi
-              
-              echo "⏳ ШАГ 6: Ожидание успешного прохождения Rolling Update пода Flask..."
-              if ! $KUBE rollout status deployment/classapp-web --namespace default --timeout=180s; then
-                echo "❌ Ошибка: Новая версия Flask-приложения не перешла в статус Ready!"
-                $KUBE get pods -l app.kubernetes.io/name=classapp-web --namespace default || true
-                exit 1
-              fi
-              
-              echo "Проверяем доступность NodePort 30080 через локальный healthcheck..."
-              echo "⏳ Даем 10 секунд на прогрев пула соединений с Patroni СУБД..."
-              sleep 10
-              
-              for i in $(seq 1 15); do
-                # Используем ключ -s, игнорируя 502/504 на этапе линковки баз данных
-                if curl -fsS --max-time 5 http://127.0.0.1:30080/healthz >/dev/null 2>&1; then
-                  echo "🚀 ИНФРАСТРУКТУРА KUBERNETES ПОЛНОСТЬЮ РАЗВЕРНУТА И ДОСТУПНА СНАРУЖИ!"
-                  break
-                fi
-                if [ "$i" -eq 15 ]; then
-                  echo "⚠️ Предупреждение: NodePort ответил таймаутом шлюза, но поды успешно запущены."
-                fi
-                echo "Ожидание прогрева веб-сервера и линковки баз данных (\$i/15)..."
-                sleep 4
-              done
-              
-              echo "🧹 ШАГ 7: Безопасная фоновая очистка неиспользуемых слоев и логов..."
-              (
-                sudo journalctl --vacuum-time=7d >/dev/null 2>&1 || true
-                if sudo k3s crictl images >/dev/null 2>&1; then
-                  sudo k3s crictl rmi \$(sudo k3s crictl images -q --unreferenced) >/dev/null 2>&1 || true
-                fi
-                echo "✅ Асинхронная очистка завершена."
-              ) &
+            fi
+            echo "✅ Асинхронная очистка завершена."
+          ) &
           EOF
 
       # --- 5. ТЕЛЕГРАМ УВЕДОМЛЕНИЕ О РЕЗУЛЬТАТЕ ---

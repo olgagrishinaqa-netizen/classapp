@@ -7,10 +7,9 @@ metadata:
     app.kubernetes.io/name: classapp-migrate
     app.kubernetes.io/part-of: classapp
 spec:
-  # Автоматическая очистка завершенных Job через 5 минут после финиша —
-  # не нужно вручную удалять старые записи миграций.
-  ttlSecondsAfterFinished: 300
-  backoffLimit: 2
+  # Держим статус и логи дольше для упрощения диагностики после деплоя.
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 4
   template:
     metadata:
       labels:
@@ -41,9 +40,9 @@ spec:
               # Образ Spilo (в отличие от bitnami/postgresql-ha) не создает
               # прикладную БД автоматически из переменных окружения — делаем
               # это здесь идемпотентно перед запуском Alembic.
-              psql "postgresql://postgres:${PGPASSWORD}@classapp-db-master:5432/postgres" \
+              psql "postgresql://postgres:${PGPASSWORD}@classapp-db-master:5432/postgres?sslmode=require" \
                 -tc "SELECT 1 FROM pg_database WHERE datname = 'classapp'" | grep -q 1 \
-                || psql "postgresql://postgres:${PGPASSWORD}@classapp-db-master:5432/postgres" \
+                || psql "postgresql://postgres:${PGPASSWORD}@classapp-db-master:5432/postgres?sslmode=require" \
                      -c "CREATE DATABASE classapp"
           env:
             - name: PGPASSWORD
@@ -57,18 +56,15 @@ spec:
           image: ghcr.io/olgagrishinaqa-netizen/classapp:latest
           imagePullPolicy: IfNotPresent
           command:
-            - /bin/sh
-            - -ec
-            - |
-              ENCODED_DB_PASSWORD="$(python3 - <<'PY'
-              import os
-              from urllib.parse import quote
-              print(quote(os.environ["DB_PASSWORD"], safe=""))
-              PY
-              )"
-              export DATABASE_URL="postgresql://${POSTGRES_USER}:${ENCODED_DB_PASSWORD}@${POSTGRES_HOST}:5432/${POSTGRES_DB}"
-              alembic upgrade head
+            - alembic
+            - upgrade
+            - head
           env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: classapp-secrets
+                  key: database-url
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:

@@ -29,6 +29,11 @@ spec:
           image: ghcr.io/olgagrishinaqa-netizen/classapp:latest
           imagePullPolicy: IfNotPresent
           env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: classapp-secrets
+                  key: database-url
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
