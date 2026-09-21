@@ -164,6 +164,10 @@ workers. Секрет `k3s_token` рекомендуется хранить в A
   из текущего `db-password` автоматически собирается корректный
   `database-url` (`...@classapp-db-master:5432/classapp?sslmode=require`, с URL-encoding пароля).
 
+- **Лимит загрузок**: глобальный размер загружаемого файла ограничен переменной
+  `MAX_CONTENT_LENGTH` (по умолчанию `10 MiB`). Лимит применяется к API/формам
+  загрузки новостей, чеков и отчётов.
+
 Пример создания/обновления секрета:
 ```bash
 kubectl -n default create secret generic classapp-secrets \

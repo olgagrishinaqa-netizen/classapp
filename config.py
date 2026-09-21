@@ -16,6 +16,7 @@ class BaseConfig:
         "yes",
     )
     UPLOAD_FOLDER = os.getenv("UPLOAD_FOLDER", os.path.join(os.getcwd(), "uploads"))
+    MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(10 * 1024 * 1024)))
     APP_JSON_LOG_PATH = os.getenv("APP_JSON_LOG_PATH", "/var/log/classapp/app.json.log")
 
     @staticmethod

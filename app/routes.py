@@ -38,11 +38,55 @@ bp = Blueprint("main", __name__)
 
 STATUS_LABELS = {"created": "Создана", "in_progress": "В работе", "done": "Сделано"}
 ROLE_LABELS = {"parent": "Родитель", "student": "Ученик", "admin": "Админ"}
+ALLOWED_RECEIPT_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "pdf"}
+ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 
 
 def current_user():
     user_id = session.get("user_id")
     return db.session.get(User, user_id) if user_id else None
+
+
+def _has_allowed_extension(filename, allowed_extensions):
+    if "." not in filename:
+        return False
+    extension = filename.rsplit(".", 1)[1].lower()
+    return extension in allowed_extensions
+
+
+def _file_size_exceeds_limit(file_storage, max_bytes):
+    if not max_bytes:
+        return False
+    stream = file_storage.stream
+    position = stream.tell()
+    stream.seek(0, os.SEEK_END)
+    size = stream.tell()
+    stream.seek(position)
+    return size > max_bytes
+
+
+def _save_uploaded_file(
+    file_storage,
+    *,
+    allowed_extensions,
+    destination_folder,
+    field_error_message,
+):
+    original_name = secure_filename(file_storage.filename)
+    if not original_name:
+        return None, "Укажите файл с допустимым именем."
+    if not _has_allowed_extension(original_name, allowed_extensions):
+        return None, field_error_message
+
+    max_bytes = current_app.config.get("MAX_CONTENT_LENGTH")
+    if _file_size_exceeds_limit(file_storage, max_bytes):
+        max_mb = max(1, int(max_bytes // (1024 * 1024)))
+        return None, f"Размер файла превышает лимит {max_mb} МБ."
+
+    stored_name = f"{uuid4().hex}_{original_name}"
+    os.makedirs(destination_folder, exist_ok=True)
+    file_storage.save(os.path.join(destination_folder, stored_name))
+    return stored_name, None
 
 
 def auth_required(view):
@@ -193,8 +237,11 @@ def dashboard_page():
     active_task_count = Task.query.filter(Task.status != "done").count()
     latest_news = News.query.filter_by(status="published").order_by(News.created_at.desc()).first()
     month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    monthly_expenses = sum(
-        float(expense.amount) for expense in Expense.query.filter(Expense.created_at >= month_start).all()
+    monthly_expenses = float(
+        db.session.query(db.func.coalesce(db.func.sum(Expense.amount), 0))
+        .filter(Expense.created_at >= month_start)
+        .scalar()
+        or 0
     )
     return render_template(
         "dashboard.html",
@@ -427,9 +474,13 @@ def update_user_role_page(user_id):
     if not target_user:
         flash("Пользователь не найден.", "error")
     elif form.validate_on_submit():
-        target_user.role = form.role.data
-        db.session.commit()
-        flash("Роль пользователя обновлена.", "success")
+        next_role = form.role.data
+        if target_user.is_admin and next_role != "admin" and User.query.filter_by(role="admin").count() == 1:
+            flash("Нельзя изменить роль последнего администратора.", "error")
+        else:
+            target_user.role = next_role
+            db.session.commit()
+            flash("Роль пользователя обновлена.", "success")
     else:
         flash("Выберите корректную роль.", "error")
     return redirect(url_for("main.users_page"))
@@ -437,9 +488,12 @@ def update_user_role_page(user_id):
 
 @bp.route("/admin/students", methods=["GET", "POST"])
 @login_required_page
-@admin_required_page
 def admin_students_page():
-    user = current_user()
+    user, active_role = page_user()
+    if getattr(user, "role", None) != "admin":
+        flash("Доступ к разделу «Состав класса» разрешён только администратору.", "error")
+        return redirect(url_for("main.index"))
+
     form = StudentForm()
 
     if request.method == "POST":
@@ -494,11 +548,12 @@ def admin_students_page():
 
     return render_template(
         "admin_students.html",
-        user=user,
-        current_user=user,
         form=form,
         students=students,
         search_query=search_query,
+        user=user,
+        current_user=user,
+        active_role=active_role,
     )
 
 
@@ -540,12 +595,13 @@ def tasks_page():
     user = current_user()
     if not user:
         return redirect(url_for("main.login_page"))
-    tasks_list = Task.query.order_by(Task.created_at.desc()).all()
+    active_tasks = Task.query.filter(Task.status != "done").order_by(Task.created_at.desc()).all()
+    completed_tasks = Task.query.filter(Task.status == "done").order_by(Task.created_at.desc()).all()
     return render_template(
         "tasks.html",
         user=user,
-        active_tasks=[task for task in tasks_list if task.status != "done"],
-        completed_tasks=[task for task in tasks_list if task.status == "done"],
+        active_tasks=active_tasks,
+        completed_tasks=completed_tasks,
     )
 
 
@@ -596,16 +652,15 @@ def expenses_page():
                 receipt_filename = None
                 receipt = expense_form.receipt.data
                 if receipt:
-                    original_name = secure_filename(receipt.filename)
-                    if not original_name:
-                        expense_form.receipt.errors.append("Укажите файл с допустимым именем.")
-                    else:
-                        receipt_filename = f"{uuid4().hex}_{original_name}"
-                        receipt_dir = os.path.join(
-                            current_app.root_path, "static", "uploads", "receipts"
-                        )
-                        os.makedirs(receipt_dir, exist_ok=True)
-                        receipt.save(os.path.join(receipt_dir, receipt_filename))
+                    receipt_dir = os.path.join(current_app.root_path, "static", "uploads", "receipts")
+                    receipt_filename, receipt_error = _save_uploaded_file(
+                        receipt,
+                        allowed_extensions=ALLOWED_RECEIPT_EXTENSIONS,
+                        destination_folder=receipt_dir,
+                        field_error_message="Допустимы JPG, PNG, WEBP или PDF.",
+                    )
+                    if receipt_error:
+                        expense_form.receipt.errors.append(receipt_error)
                 if not expense_form.receipt.errors:
                     db.session.add(
                         Expense(
@@ -663,14 +718,16 @@ def edit_expense_page(expense_id):
     if form.validate_on_submit():
         receipt = form.receipt.data
         if receipt:
-            original_name = secure_filename(receipt.filename)
-            if not original_name:
-                form.receipt.errors.append("Укажите файл с допустимым именем.")
+            receipt_dir = os.path.join(current_app.root_path, "static", "uploads", "receipts")
+            receipt_filename, receipt_error = _save_uploaded_file(
+                receipt,
+                allowed_extensions=ALLOWED_RECEIPT_EXTENSIONS,
+                destination_folder=receipt_dir,
+                field_error_message="Допустимы JPG, PNG, WEBP или PDF.",
+            )
+            if receipt_error:
+                form.receipt.errors.append(receipt_error)
             else:
-                receipt_filename = f"{uuid4().hex}_{original_name}"
-                receipt_dir = os.path.join(current_app.root_path, "static", "uploads", "receipts")
-                os.makedirs(receipt_dir, exist_ok=True)
-                receipt.save(os.path.join(receipt_dir, receipt_filename))
                 expense.receipt_path = receipt_filename
         if not form.receipt.errors:
             expense.title = form.title.data.strip()
@@ -795,10 +852,22 @@ def update_user(user_id):
     user = db.session.get(User, user_id)
     if not user:
         return jsonify(error="Пользователь не найден"), 404
+
+    actor = current_user()
     data = request.get_json(silent=True) or {}
-    for field in ("full_name", "role"):
-        if field in data and str(data[field]).strip():
-            setattr(user, field, str(data[field]).strip())
+    if "full_name" in data and str(data["full_name"]).strip():
+        user.full_name = str(data["full_name"]).strip()
+    if "role" in data and str(data["role"]).strip():
+        role_aliases = {"parent": "parent", "родитель": "parent", "student": "student", "ученик": "student", "admin": "admin", "админ": "admin"}
+        raw_role = str(data["role"]).strip().lower()
+        next_role = role_aliases.get(raw_role, raw_role)
+        if next_role not in {"parent", "student", "admin"}:
+            return jsonify(error="Недопустимая роль"), 400
+        if user.is_admin and next_role != "admin" and User.query.filter_by(role="admin").count() == 1:
+            return jsonify(error="Нельзя изменить роль последнего администратора"), 400
+        if actor and actor.id == user.id and actor.is_admin and next_role != "admin":
+            return jsonify(error="Нельзя понизить собственную роль администратора через API"), 400
+        user.role = next_role
     if "phone" in data and str(data["phone"]).strip():
         normalized_phone = User.normalize_phone(data["phone"])
         if not normalized_phone:
@@ -840,11 +909,16 @@ def create_news():
     image_name = None
     image_path = None
     if image and image.filename:
-        image_name = secure_filename(image.filename)
-        image_path = f"{uuid4().hex}_{image_name}"
         upload_folder = current_app.config.get("UPLOAD_FOLDER", os.path.join(os.getcwd(), "uploads"))
-        os.makedirs(upload_folder, exist_ok=True)
-        image.save(os.path.join(upload_folder, image_path))
+        image_path, image_error = _save_uploaded_file(
+            image,
+            allowed_extensions=ALLOWED_IMAGE_EXTENSIONS,
+            destination_folder=upload_folder,
+            field_error_message="Допустимы JPG, PNG или WEBP.",
+        )
+        if image_error:
+            return jsonify(error=image_error), 400
+        image_name = secure_filename(image.filename)
 
     news_item = News(title=title, description=description, status=status, image_name=image_name, image_path=image_path)
     db.session.add(news_item)
@@ -869,12 +943,16 @@ def update_news(news_id):
 
     image = request.files.get("image") if hasattr(request, "files") else None
     if image and image.filename:
-        image_name = secure_filename(image.filename)
-        image_path = f"{uuid4().hex}_{image_name}"
         upload_folder = current_app.config.get("UPLOAD_FOLDER", os.path.join(os.getcwd(), "uploads"))
-        os.makedirs(upload_folder, exist_ok=True)
-        image.save(os.path.join(upload_folder, image_path))
-        news_item.image_name = image_name
+        image_path, image_error = _save_uploaded_file(
+            image,
+            allowed_extensions=ALLOWED_IMAGE_EXTENSIONS,
+            destination_folder=upload_folder,
+            field_error_message="Допустимы JPG, PNG или WEBP.",
+        )
+        if image_error:
+            return jsonify(error=image_error), 400
+        news_item.image_name = secure_filename(image.filename)
         news_item.image_path = image_path
 
     db.session.commit()
@@ -943,11 +1021,16 @@ def create_report():
     receipt_name = None
     receipt_path = None
     if receipt and receipt.filename:
-        receipt_name = secure_filename(receipt.filename)
-        receipt_path = f"{uuid4().hex}_{receipt_name}"
         upload_folder = current_app.config.get("UPLOAD_FOLDER", os.path.join(os.getcwd(), "uploads"))
-        os.makedirs(upload_folder, exist_ok=True)
-        receipt.save(os.path.join(upload_folder, receipt_path))
+        receipt_path, receipt_error = _save_uploaded_file(
+            receipt,
+            allowed_extensions=ALLOWED_RECEIPT_EXTENSIONS,
+            destination_folder=upload_folder,
+            field_error_message="Допустимы JPG, PNG, WEBP или PDF.",
+        )
+        if receipt_error:
+            return jsonify(error=receipt_error), 400
+        receipt_name = secure_filename(receipt.filename)
     report = ExpenseReport(income=income, expense_items=normalized, receipt_name=receipt_name, receipt_path=receipt_path)
     db.session.add(report)
     db.session.commit()
@@ -955,6 +1038,7 @@ def create_report():
 
 
 @bp.get("/uploads/<path:filename>")
+@auth_required
 def uploaded_file(filename):
     upload_folder = current_app.config.get("UPLOAD_FOLDER", os.path.join(os.getcwd(), "uploads"))
     return send_from_directory(upload_folder, filename)
