@@ -29,7 +29,8 @@
 
   {% if show_navigation|default(true) %}
     <nav aria-label="Основная навигация" class="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
-      <div class="mx-auto grid max-w-lg grid-cols-4 gap-1">
+      {% set is_admin_mode = current_user is defined and current_user and current_user.is_admin %}
+      <div class="mx-auto grid max-w-lg gap-1 {% if is_admin_mode %}grid-cols-5{% else %}grid-cols-4{% endif %}">
         <a href="{{ url_for('main.dashboard_page') }}" class="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold {% if request.endpoint == 'main.dashboard_page' %}bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300{% else %}text-slate-500 dark:text-slate-400{% endif %}">
           <span aria-hidden="true" class="text-lg">⌂</span>Главная
         </a>
@@ -39,6 +40,11 @@
         <a href="{{ url_for('main.expenses_page') }}" class="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold {% if request.endpoint == 'main.expenses_page' %}bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300{% else %}text-slate-500 dark:text-slate-400{% endif %}">
           <span aria-hidden="true" class="text-lg">₽</span>Расходы
         </a>
+        {% if is_admin_mode %}
+        <a href="{{ url_for('main.admin_students_page') }}" class="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold {% if request.endpoint == 'main.admin_students_page' %}bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300{% else %}text-slate-500 dark:text-slate-400{% endif %}">
+          <span aria-hidden="true" class="text-lg">👥</span>Класс
+        </a>
+        {% endif %}
         <a href="{{ url_for('main.profile_page') }}" class="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold {% if request.endpoint == 'main.profile_page' %}bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300{% else %}text-slate-500 dark:text-slate-400{% endif %}">
           <span aria-hidden="true" class="text-lg">{{ user.full_name[:1]|upper }}</span>Профиль
         </a>

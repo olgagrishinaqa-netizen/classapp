@@ -151,23 +151,8 @@ jobs:
           fi
           rm -f "$PATRONI_APPLY_ERR"
           
-          echo "⏳ ШАГ 3: Ожидание обновления StatefulSet Patroni и готовности HA-кластера..."
-          if ! $KUBE rollout status statefulset/classapp-patroni --namespace default --timeout=180s; then
-            echo "❌ StatefulSet Patroni не завершил обновление за 180s. Диагностика:"
-            $KUBE get pods -l app.kubernetes.io/name=patroni --namespace default --show-labels || true
-            $KUBE describe pods -l app.kubernetes.io/name=patroni --namespace default || true
-            exit 1
-          fi
-          
-          if ! $KUBE wait --namespace default --for=condition=Ready pod/classapp-patroni-0 --timeout=180s; then
-            echo "❌ Patroni leader pod не готов. Диагностика:"
-            $KUBE get pods -l app.kubernetes.io/name=patroni --namespace default --show-labels || true
-            $KUBE describe pods -l app.kubernetes.io/name=patroni --namespace default || true
-            exit 1
-          fi
-          
-          echo "⏳ Ожидаем master endpoint classapp-db-master..."
-          for i in $(seq 1 60); do
+          echo "⏳ ШАГ 3: Проверка готовности Patroni через master endpoint classapp-db-master..."
+          for i in $(seq 1 45); do
             MASTER_ENDPOINTS=$($KUBE get endpoints classapp-db-master \
               --namespace default \
               -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || true)
@@ -175,8 +160,10 @@ jobs:
               echo "✅ classapp-db-master endpoints: ${MASTER_ENDPOINTS}"
               break
             fi
-            if [ "$i" -eq 60 ]; then
+            if [ "$i" -eq 45 ]; then
               echo "❌ classapp-db-master не получил ни одного master endpoint"
+              $KUBE get pods -l app.kubernetes.io/name=patroni --namespace default --show-labels || true
+              $KUBE describe pods -l app.kubernetes.io/name=patroni --namespace default || true
               exit 1
             fi
             sleep 2
