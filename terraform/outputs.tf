@@ -29,3 +29,8 @@ output "k3s_private_ips" {
     for name, vm in yandex_compute_instance.k3s : name => vm.network_interface[0].ip_address
   }
 }
+
+output "master1_static_ip" {
+  description = "Зарезервированный статический IP master-1 — не меняется при остановке/перезапуске VM."
+  value       = yandex_vpc_address.master1.external_ipv4_address[0].address
+}
