@@ -4,7 +4,7 @@
 # промахивается мимо него, поэтому задаём путь явно.
 ansible_python_interpreter: /usr/bin/python3
 k3s_version: v1.30.8+k3s1
-helm_version: "3.16.4"
+helm_version: "3.22.0"
 # k3s_token намеренно не хранится здесь в открытом виде — задавайте его через
 # group_vars/vault.yml (ansible-vault, см. vault.yml.example) либо флагом
 # `-e k3s_token=$(openssl rand -hex 32)` при запуске playbook.
