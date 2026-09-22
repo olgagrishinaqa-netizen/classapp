@@ -1,4 +1,8 @@
 ---
+# Ubuntu 22.04 (cloud image) не имеет /usr/bin/python (только python3) —
+# автоопределение интерпретатора (interpreter_python=auto_silent) иногда
+# промахивается мимо него, поэтому задаём путь явно.
+ansible_python_interpreter: /usr/bin/python3
 k3s_version: v1.30.8+k3s1
 # k3s_token намеренно не хранится здесь в открытом виде — задавайте его через
 # group_vars/vault.yml (ansible-vault, см. vault.yml.example) либо флагом
