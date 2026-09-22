@@ -105,6 +105,17 @@ locals {
   )
 }
 
+# Зарезервированный статический IP для master-1 — постоянной ноды повседневного
+# режима. Без этого при остановке/перезапуске preemptible-инстанса Yandex
+# Cloud выдаёт новый эфемерный внешний IP, и inventory/SSH_HOST устаревают.
+resource "yandex_vpc_address" "master1" {
+  name = "${var.name_prefix}-master-1-ip"
+
+  external_ipv4_address {
+    zone_id = var.zones[0]
+  }
+}
+
 resource "yandex_compute_instance" "k3s" {
   for_each = local.nodes
 
@@ -130,8 +141,10 @@ resource "yandex_compute_instance" "k3s" {
   }
 
   network_interface {
-    subnet_id          = local.subnet_id_by_zone[each.value.zone]
-    nat                = true
+    subnet_id      = local.subnet_id_by_zone[each.value.zone]
+    nat            = true
+    nat_ip_address = each.key == "master-1" ? yandex_vpc_address.master1.external_ipv4_address[0].address : null
+
     security_group_ids = [yandex_vpc_security_group.k3s.id]
   }
 
