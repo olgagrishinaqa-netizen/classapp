@@ -18,16 +18,15 @@
 # Устанавливать не нужно — инсталлятор k3s сам создаёт симлинк
 # /usr/local/bin/kubectl на свой бинарник (роль k3s ниже).
 
-# Helm ставится прямой загрузкой бинарника с GitHub Releases одним файлом,
-# а не через apt + сторонний репозиторий (signing key + apt_repository +
-# apt install — три отдельных внешних запроса вместо одного, три шанса
-# словить тот же таймаут). Сеть с этой VM в принципе нестабильна для внешних
-# HTTPS-запросов (см. retries на related задачах) — GitHub Releases выбран
-# не потому, что остальные хосты недоступны в принципе (у них есть IPv4),
-# а как более простой однофайловый путь с меньшим числом сетевых операций.
+# Helm ставится прямой загрузкой бинарника одним файлом с get.helm.sh —
+# официального CDN дистрибуции релизов Helm (GitHub Releases для свежих
+# версий Helm больше не содержит сам архив, только .asc/.sha256 подписи —
+# поэтому просто прямая ссылка на GitHub возвращала 404, а не сетевая
+# ошибка). Не через apt + сторонний репозиторий (signing key + apt_repository
+# + apt install — три отдельных внешних запроса вместо одного).
 - name: Download Helm release archive
   ansible.builtin.get_url:
-    url: "https://github.com/helm/helm/releases/download/v{{ helm_version }}/helm-v{{ helm_version }}-linux-amd64.tar.gz"
+    url: "https://get.helm.sh/helm-v{{ helm_version }}-linux-amd64.tar.gz"
     dest: "/tmp/helm-v{{ helm_version }}-linux-amd64.tar.gz"
     mode: "0644"
   register: helm_download
