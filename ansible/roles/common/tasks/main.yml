@@ -13,19 +13,6 @@
     state: present
     update_cache: true
 
-- name: Install Docker
-  ansible.builtin.apt:
-    name:
-      - docker.io
-      - docker-compose-plugin
-    state: present
-
-- name: Add remote user to docker group
-  ansible.builtin.user:
-    name: "{{ ansible_user }}"
-    groups: docker
-    append: true
-
 - name: Install kubectl
   ansible.builtin.get_url:
     url: https://dl.k8s.io/release/v1.30.8/bin/linux/amd64/kubectl

@@ -145,7 +145,8 @@ echo "k3s_token: \"$(openssl rand -hex 32)\"" > group_vars/vault.yml
 ansible-playbook -i inventory/hosts.ini playbook.yml
 ```
 
-Роль `common` устанавливает Docker, curl, git, kubectl и Helm. Роль `k3s`
+Роль `common` устанавливает базовые пакеты, kubectl и Helm (Docker не нужен —
+k3s использует свой встроенный containerd). Роль `k3s`
 устанавливает фиксированную версию K3s, создает HA control plane (2 master)
 и подключает worker. Роль `bootstrap_secrets` при первом прогоне генерирует
 и создаёт `classapp-secrets`/`classapp-grafana` — см. раздел «Мониторинг и
