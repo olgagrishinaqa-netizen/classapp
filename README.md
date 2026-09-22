@@ -45,6 +45,23 @@ docker run -d --rm -p 5432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=cla
 pytest
 ```
 
+### Нагрузочное тестирование
+
+Сценарий на Locust лежит в `tests/load/locustfile.py` и имитирует типичную
+навигацию залогиненного администратора (дашборд, задачи, новости, расходы).
+
+```bash
+# UI-режим (веб-интерфейс на http://localhost:8089)
+locust -f tests/load/locustfile.py --host=http://localhost:8000
+
+# headless-режим с отчётом (для CI/сравнения нагрузки)
+locust -f tests/load/locustfile.py --host=http://localhost:8000 \
+  --headless -u 20 -r 5 --run-time 1m --csv=load_report
+```
+
+Учётные данные берутся из `LOAD_TEST_PHONE`/`LOAD_TEST_PASSWORD` (по умолчанию —
+дефолтный bootstrap-админ дев-стенда, `ADMIN_PHONE`/`ADMIN_PASSWORD` из `.env`).
+
 ## CI/CD пайплайн
 
 Три workflow в `.github/workflows/`:
@@ -69,6 +86,18 @@ pytest
 control-plane/worker и security group. В outputs доступны внешние и внутренние
 IP-адреса каждой ноды.
 
+Один и тот же код работает в двух режимах — переключение только через tfvars,
+дублировать инфраструктурный код не нужно:
+
+| Режим | tfvars | Нод | Стоимость | Когда |
+|---|---|---|---|---|
+| **Повседневный** | `terraform.tfvars.example` | 1 (`master-1`, preemptible, HDD) | минимальная | обычная работа приложения для себя |
+| **Демо для защиты** | `terraform.tfvars.demo.example` | 3 (2 master + 1 worker, обычные, SSD) | заметно выше | временно, на время показа HA/масштабируемости |
+
+`master-1` (зона `ru-central1-a`) присутствует в обоих режимах и никогда не
+пересоздаётся при переключении — данные Patroni на его локальном диске не
+теряются. Пересоздаются/удаляются только добавленные `master-2`/`worker-1`.
+
 ### Terraform в Yandex Cloud
 
 ```bash
@@ -82,24 +111,51 @@ terraform apply tfplan
 terraform output -json k3s_nodes
 ```
 
-`terraform.tfstate`, `terraform.tfvars` и токены не должны попадать в Git.
+Перед защитой — временно домасштабировать до полного кластера, после — вернуться обратно:
+
+```bash
+cp terraform.tfvars.demo.example terraform.tfvars.demo
+# Заполните те же поля, что и в основном tfvars.
+terraform apply -var-file=terraform.tfvars.demo    # 1 -> 3 ноды
+./generate_inventory.sh && cd ../ansible && ansible-playbook -i inventory/hosts.ini playbook.yml && cd ../terraform
+# k3s_token берётся из group_vars/vault.yml (тот же, что при первом запуске) —
+# новые ноды подключатся к уже работающему кластеру, данные не теряются.
+# ... демонстрация HPA/реплик/Patroni failover ...
+terraform apply -var-file=terraform.tfvars.example  # обратно на 1 дешёвую ноду
+```
+
+`terraform.tfstate`, `terraform.tfvars*` и токены не должны попадать в Git.
 Для production используйте remote backend в Yandex Object Storage и ограничьте
 `allowed_ssh_cidrs` адресом VPN/офиса.
 
 ### Подготовка нод через Ansible
 
 ```bash
-cd ansible
-cp inventory/hosts.ini.example inventory/hosts.ini
-# Замените public_ip на значения из terraform output.
+# Inventory генерируется автоматически из terraform output — руками
+# редактировать inventory/hosts.ini не нужно (и не надо коммитить, см. .gitignore).
+cd terraform && ./generate_inventory.sh && cd ../ansible
+
 ansible-galaxy collection install -r requirements.yml
-ansible-playbook -i inventory/hosts.ini playbook.yml \
-  -e "k3s_token=$(openssl rand -hex 32)"
+
+# k3s_token задаётся ОДИН раз и переиспользуется при каждом следующем прогоне
+# (в т.ч. при демо-масштабировании) — иначе новые ноды не смогут
+# присоединиться к уже поднятому кластеру. group_vars/vault.yml в .gitignore.
+echo "k3s_token: \"$(openssl rand -hex 32)\"" > group_vars/vault.yml
+
+ansible-playbook -i inventory/hosts.ini playbook.yml
 ```
 
 Роль `common` устанавливает Docker, curl, git, kubectl и Helm. Роль `k3s`
-устанавливает фиксированную версию K3s, создает HA control plane и подключает
-workers. Секрет `k3s_token` рекомендуется хранить в Ansible Vault.
+устанавливает фиксированную версию K3s, создает HA control plane (2 master)
+и подключает worker. Роль `bootstrap_secrets` при первом прогоне генерирует
+и создаёт `classapp-secrets`/`classapp-grafana` — см. раздел «Мониторинг и
+логирование» ниже. Хотите зашифровать `vault.yml` вместо простого файла —
+используйте `ansible-vault encrypt group_vars/vault.yml`.
+
+После первого успешного прогона обновите GitHub secret `SSH_HOST` — он должен
+указывать на публичный IP первого мастера (`terraform output k3s_public_ips`),
+т.к. `deploy.yml` применяет манифесты через SSH на этот узел и локальный
+`kubectl`/`kubeconfig` (`/etc/rancher/k3s/k3s.yaml`) этой control-plane ноды.
 
 ### Конфигурация Patroni и etcd в Kubernetes
 
@@ -192,22 +248,38 @@ kubectl get endpoints classapp-db-master  # должен быть непуст
 2. `kubectl logs classapp-patroni-0 -c patroni` — логи инициализации БД
 3. `kubectl get svc etcd-service` — убедитесь, что etcd сервис доступен
 
+### Масштабируемость
+
+`classapp-web` и `classapp-nginx` разворачиваются в нескольких репликах
+(3 и 2 соответственно), балансировка между ними обеспечивается штатными
+Kubernetes Service (`classapp-web-service`, NodePort `classapp-nginx`).
+Дополнительно `k8s/hpa.yaml` объявляет `HorizontalPodAutoscaler` для
+`classapp-web` (2–5 реплик по CPU, порог 70%) — работает из коробки, т.к.
+K3s поставляется с `metrics-server` по умолчанию.
+
+Весь стек (etcd, Patroni, миграции, web, nginx, HPA) собран в
+`k8s/kustomization.yaml`, поэтому `kubectl apply -k k8s/` — самостоятельный,
+воспроизводимый способ поднять всё приложение одной командой.
+
 ### Мониторинг и логирование в Kubernetes
 
 Роль `monitoring` устанавливает Helm chart `kube-prometheus-stack`, включая
 Prometheus, Grafana, node-exporter и kube-state-metrics. Манифест
 `classapp-monitoring.yaml` добавляет ServiceMonitor для Flask `/metrics`,
 Patroni API `/metrics` и Grafana dashboard с HTTP 5xx, готовностью web/Patroni
-и CPU нод.
+и CPU нод. Локальный docker-compose стек мониторинга (`monitoring/prometheus.yml`)
+дополнительно подключает alert-правила из `monitoring/alert.rules.yml`
+(недоступность инстанса, повышенная доля 5xx-ответов).
 
-Перед запуском роли создайте Secret Grafana:
-
-```bash
-kubectl create namespace monitoring
-kubectl -n monitoring create secret generic classapp-grafana \
-  --from-literal=admin-user=admin \
-  --from-literal=admin-password='CHANGE_ME'
-```
+Секреты `classapp-secrets` (для приложения) и `classapp-grafana` создаются
+автоматически ролью `bootstrap_secrets`, которая выполняется перед `monitoring`
+в том же прогоне `ansible-playbook playbook.yml` — значения генерируются
+случайно и создаются **только при первом запуске** (идемпотентно, повторные
+прогоны их не трогают и не перезаписывают уже работающий пароль БД). Сразу
+после первого запуска сохраните пароли, которые Ansible выведет в консоль
+(`debug`-таск в `roles/bootstrap_secrets`) — повторно они нигде не показываются.
+Если нужны собственные значения вместо случайных — создайте секреты вручную
+до запуска playbook, роль просто увидит, что они уже есть, и пропустит шаг.
 
 ### CI/CD и endpoints
 

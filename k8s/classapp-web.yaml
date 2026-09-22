@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/name: classapp-web
     app.kubernetes.io/part-of: classapp
 spec:
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
       app.kubernetes.io/name: classapp-web
@@ -68,6 +68,13 @@ spec:
             - name: http
               containerPort: 8000
               protocol: TCP
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
           volumeMounts:
             - name: classapp-logs
               mountPath: /var/log/classapp

@@ -1,5 +1,13 @@
 name: Deploy to Production VM1
 
+# SSH_HOST должен указывать на control-plane узел (master) multi-node K3s
+# кластера, поднятого через terraform/ + ansible/ (см. terraform/generate_inventory.sh
+# и ansible/playbook.yml). kubectl в шагах ниже работает с ЛОКАЛЬНЫМ kubeconfig
+# этого узла (/etc/rancher/k3s/k3s.yaml) — механизм одинаково корректен что для
+# одной VM, что для master-ноды HA-кластера, менять его не требуется. После
+# применения terraform/ansible обновите значение секрета SSH_HOST на публичный
+# IP master-1 (см. `terraform output k3s_public_ips`).
+
 on:
   workflow_run:
     workflows: ["Build and Push to GHCR"]

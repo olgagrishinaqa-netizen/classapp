@@ -1,3 +1,6 @@
+"""WTForms-формы classapp: аутентификация, управление пользователями/учениками,
+новости, учёт взносов и расходов."""
+
 from decimal import Decimal
 
 from flask_wtf import FlaskForm
@@ -7,12 +10,16 @@ from wtforms.validators import DataRequired, EqualTo, Length, NumberRange, Optio
 
 
 class LoginForm(FlaskForm):
+    """Вход по номеру телефона и паролю."""
+
     username = StringField("Номер телефона", validators=[DataRequired(), Length(max=32)])
     password = PasswordField("Пароль", validators=[DataRequired()])
     submit = SubmitField("Войти")
 
 
 class RegisterForm(FlaskForm):
+    """Самостоятельная регистрация нового аккаунта (всегда с ролью parent)."""
+
     full_name = StringField("Имя и фамилия", validators=[DataRequired(), Length(max=160)])
     username = StringField("Номер телефона", validators=[DataRequired(), Length(max=32)])
     password = PasswordField("Пароль", validators=[DataRequired(), Length(min=6, max=128)])
@@ -23,6 +30,8 @@ class RegisterForm(FlaskForm):
 
 
 class ExpenseForm(FlaskForm):
+    """Добавление/редактирование расхода, опционально с чеком."""
+
     title = StringField("Название расхода", validators=[DataRequired(), Length(max=180)])
     amount = DecimalField(
         "Сумма",
@@ -38,6 +47,8 @@ class ExpenseForm(FlaskForm):
 
 
 class PaymentForm(FlaskForm):
+    """Фиксация взноса родителя; choices для user_id заполняются во view."""
+
     user_id = SelectField("Плательщик", coerce=int, validators=[DataRequired()])
     amount = DecimalField(
         "Сумма взноса",
@@ -48,6 +59,8 @@ class PaymentForm(FlaskForm):
 
 
 class NewsForm(FlaskForm):
+    """Создание/редактирование новости с публикацией или сохранением в черновик."""
+
     title = StringField("Заголовок", validators=[DataRequired(), Length(max=200)])
     description = TextAreaField("Текст новости", validators=[DataRequired()])
     status = SelectField(
@@ -59,6 +72,8 @@ class NewsForm(FlaskForm):
 
 
 class RoleForm(FlaskForm):
+    """Переключение активной роли интерфейса (parent/admin) на /profile."""
+
     role = SelectField(
         "Режим интерфейса",
         choices=[("parent", "Родитель"), ("admin", "Администратор")],
@@ -68,6 +83,8 @@ class RoleForm(FlaskForm):
 
 
 class UserRoleForm(FlaskForm):
+    """Смена роли другого пользователя администратором."""
+
     role = SelectField(
         "Роль",
         choices=[("parent", "Родитель"), ("student", "Ученик"), ("admin", "Администратор")],
@@ -77,6 +94,9 @@ class UserRoleForm(FlaskForm):
 
 
 class UserManagementForm(FlaskForm):
+    """Создание/редактирование пользователя администратором (пароль опционален
+    при редактировании — пустое значение сохраняет текущий пароль)."""
+
     last_name = StringField("Фамилия", validators=[DataRequired(), Length(max=80)])
     first_name = StringField("Имя", validators=[DataRequired(), Length(max=80)])
     middle_name = StringField("Отчество", validators=[Length(max=80)])
@@ -91,6 +111,8 @@ class UserManagementForm(FlaskForm):
 
 
 class StudentForm(FlaskForm):
+    """Добавление ученика в состав класса."""
+
     last_name = StringField(
         "Фамилия",
         validators=[

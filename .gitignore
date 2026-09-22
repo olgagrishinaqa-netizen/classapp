@@ -18,12 +18,10 @@ docker-compose.dev.yml.bak
 *.tfstate.*
 crash.log
 *.tfvars
-!infra/terraform/terraform.tfvars.sample
-infra/terraform/.terraform/
-infra/terraform/terraform.tfstate
-infra/terraform/terraform.tfstate.backup
-infra/terraform/terraform.tfvars
-infra/terraform/*.tfplan
+# Генерируется автоматически из terraform output (terraform/generate_inventory.sh)
+# и содержит реальные публичные IP — не коммитим.
+ansible/inventory/hosts.ini
+ansible/group_vars/vault.yml
 reports/
 .pytest_cache/
 htmlcov/

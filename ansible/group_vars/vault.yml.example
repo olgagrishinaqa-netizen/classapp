@@ -1,0 +1,4 @@
+---
+# Скопируйте в group_vars/vault.yml и зашифруйте: ansible-vault encrypt group_vars/vault.yml
+# Затем запускайте playbook с --ask-vault-pass или --vault-password-file.
+k3s_token: "CHANGE_ME"

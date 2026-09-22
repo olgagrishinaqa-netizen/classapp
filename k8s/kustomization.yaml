@@ -3,9 +3,21 @@ kind: Kustomization
 namespace: default
 
 resources:
+  - etcd.yaml
+  - services.yaml
+  - patroni.yaml
+  - migrate-job.yaml
   - classapp-web.yaml
   - classapp-nginx.yaml
+  - hpa.yaml
 
+# Полный стек (etcd, Patroni, миграции, web, nginx, HPA) собран сюда, чтобы
+# `kubectl apply -k k8s/` был самостоятельным источником истины для деплоя.
+# CI (deploy.yml) по-прежнему применяет часть манифестов раздельно и явно
+# ждёт готовности БД/завершения миграции перед раскаткой web — это осознанно
+# оставлено, т.к. `classapp-migrate` инициализируется через initContainer с
+# retry-циклом на готовность Postgres и переживёт одновременный apply.
+#
 # newTag ниже переписывается в CI (`sed`) перед `kubectl apply -k`, подставляя
 # актуальный тег свежесобранного образа (main-<sha>). Kustomize гарантирует
 # атомарное применение web+nginx с одним и тем же тегом образа за один apply

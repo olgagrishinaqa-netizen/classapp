@@ -60,7 +60,7 @@ metadata:
     app.kubernetes.io/name: classapp-nginx
     app.kubernetes.io/part-of: classapp
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app.kubernetes.io/name: classapp-nginx
@@ -85,6 +85,13 @@ spec:
             - name: http
               containerPort: 8080
               protocol: TCP
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 64Mi
           volumeMounts:
             - name: nginx-config
               mountPath: /etc/nginx/nginx.conf

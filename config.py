@@ -1,3 +1,6 @@
+"""Конфигурация Flask-приложения: значения по умолчанию для dev и жёсткие
+fail-fast проверки обязательных секретов для прода."""
+
 import os
 
 
@@ -27,10 +30,14 @@ class BaseConfig:
 
 
 class DevConfig(BaseConfig):
+    """Локальная разработка: DEBUG включён, допустимы дефолтные секреты/SQLite."""
+
     DEBUG = True
 
 
 class ProdConfig(BaseConfig):
+    """Продакшен: требует явных SECRET_KEY/DATABASE_URL, см. init_app."""
+
     DEBUG = False
     # By default do not force secure-only cookies unless explicitly configured.
     # In many deployments TLS is terminated by a reverse proxy; enable by env var when TLS is present.
