@@ -49,7 +49,7 @@ variable "subnets" {
   default = {
     a = { zone = "ru-central1-a", cidr = "10.20.1.0/24" }
     b = { zone = "ru-central1-b", cidr = "10.20.2.0/24" }
-    c = { zone = "ru-central1-c", cidr = "10.20.3.0/24" }
+    c = { zone = "ru-central1-d", cidr = "10.20.3.0/24" } # ru-central1-c: статус DOWN в Yandex Cloud
   }
 }
 

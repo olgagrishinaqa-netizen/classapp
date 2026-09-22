@@ -20,7 +20,7 @@ allowed_ssh_cidrs = ["203.0.113.10/32"]
 name_prefix = "classapp"
 
 zones        = ["ru-central1-a", "ru-central1-b"]
-worker_zones = ["ru-central1-c"]
+worker_zones = ["ru-central1-d"] # ru-central1-c: статус DOWN в Yandex Cloud
 
 # Не preemptible на время защиты — не хотим, чтобы Яндекс отобрал ноду посреди показа.
 preemptible     = false
