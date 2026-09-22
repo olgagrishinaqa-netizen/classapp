@@ -13,28 +13,38 @@
     state: present
     update_cache: true
 
-# kubectl отдельно не качаем: dl.k8s.io резолвится только в IPv6, а с этой
-# VM до него нет маршрута. Устанавливать не нужно — инсталлятор k3s сам
-# создаёт симлинк /usr/local/bin/kubectl на свой бинарник (роль k3s ниже).
+# kubectl отдельно не качаем — это лишняя точка отказа (сеть с этой VM
+# периодически нестабильна для внешних HTTPS-загрузок, независимо от хоста).
+# Устанавливать не нужно — инсталлятор k3s сам создаёт симлинк
+# /usr/local/bin/kubectl на свой бинарник (роль k3s ниже).
 
-- name: Install Helm signing key
+# Helm ставится прямой загрузкой бинарника с GitHub Releases одним файлом,
+# а не через apt + сторонний репозиторий (signing key + apt_repository +
+# apt install — три отдельных внешних запроса вместо одного, три шанса
+# словить тот же таймаут). Сеть с этой VM в принципе нестабильна для внешних
+# HTTPS-запросов (см. retries на related задачах) — GitHub Releases выбран
+# не потому, что остальные хосты недоступны в принципе (у них есть IPv4),
+# а как более простой однофайловый путь с меньшим числом сетевых операций.
+- name: Download Helm release archive
   ansible.builtin.get_url:
-    url: https://packages.buildkite.com/helm-linux/helm-debian/any/helm.asc
-    dest: /etc/apt/keyrings/helm.asc
+    url: "https://github.com/helm/helm/releases/download/v{{ helm_version }}/helm-v{{ helm_version }}-linux-amd64.tar.gz"
+    dest: "/tmp/helm-v{{ helm_version }}-linux-amd64.tar.gz"
     mode: "0644"
-  register: helm_key_download
+  register: helm_download
   retries: 5
   delay: 10
-  until: helm_key_download is succeeded
+  until: helm_download is succeeded
 
-- name: Add Helm repository
-  ansible.builtin.apt_repository:
-    repo: "deb [signed-by=/etc/apt/keyrings/helm.asc] https://packages.buildkite.com/helm-linux/helm-debian/any/ any main"
-    filename: helm-stable
-    state: present
+- name: Extract Helm archive
+  ansible.builtin.unarchive:
+    src: "/tmp/helm-v{{ helm_version }}-linux-amd64.tar.gz"
+    dest: /tmp
+    remote_src: true
+    creates: /tmp/linux-amd64/helm
 
-- name: Install Helm
-  ansible.builtin.apt:
-    name: helm
-    state: present
-    update_cache: true
+- name: Install Helm binary
+  ansible.builtin.copy:
+    src: /tmp/linux-amd64/helm
+    dest: /usr/local/bin/helm
+    mode: "0755"
+    remote_src: true
