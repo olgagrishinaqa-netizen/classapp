@@ -14,6 +14,10 @@ provider "yandex" {
   cloud_id  = var.cloud_id
   folder_id = var.folder_id
   zone      = var.zones[0]
+  # Наблюдалась нестабильная сеть до api.cloud.yandex.net (периодические
+  # DeadlineExceeded при первичном discovery API-эндпоинтов) — увеличиваем
+  # число внутренних ретраев провайдера, чтобы не перезапускать apply вручную.
+  max_retries = 10
 }
 
 resource "yandex_vpc_network" "classapp" {
