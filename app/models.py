@@ -1,3 +1,6 @@
+"""ORM-модели classapp: пользователи и роли, задачи, новости, учёт взносов
+и расходов класса, состав учеников."""
+
 import re
 from datetime import datetime
 
@@ -14,6 +17,9 @@ def local_now():
 
 
 class User(UserMixin, db.Model):
+    """Учётная запись: родитель, ученик или администратор. Пароль хранится
+    только в виде хэша (werkzeug scrypt), телефон — уникальный логин."""
+
     @staticmethod
     def normalize_phone(raw_phone):
         if raw_phone is None:
@@ -53,6 +59,8 @@ class User(UserMixin, db.Model):
 
 
 class ExpenseReport(db.Model):
+    """Сводный финансовый отчёт (доход + список статей расходов одним JSON-блобом)."""
+
     id = db.Column(db.Integer, primary_key=True)
     income = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     expense_items = db.Column(db.JSON, nullable=False, default=list)
@@ -70,6 +78,8 @@ class ExpenseReport(db.Model):
 
 
 class Payment(db.Model):
+    """Взнос родителя в бюджет класса."""
+
     __tablename__ = "payment"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -81,6 +91,8 @@ class Payment(db.Model):
 
 
 class Expense(db.Model):
+    """Расход из бюджета класса, опционально с приложенным чеком."""
+
     __tablename__ = "expense"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -98,6 +110,8 @@ class Expense(db.Model):
 
 
 class Task(db.Model):
+    """Задача/поручение класса со статусом created/in_progress/done."""
+
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(180), nullable=False)
     description = db.Column(db.Text, default="")
@@ -106,6 +120,8 @@ class Task(db.Model):
 
 
 class News(db.Model):
+    """Новость с черновым/опубликованным статусом и опциональной картинкой."""
+
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text, nullable=False, default="")
@@ -123,6 +139,8 @@ class News(db.Model):
 
 
 class TaskComment(db.Model):
+    """Комментарий к задаче (модель не используется UI на текущий момент)."""
+
     id = db.Column(db.Integer, primary_key=True)
     task_id = db.Column(db.Integer, db.ForeignKey("task.id"), nullable=False)
     body = db.Column(db.Text, nullable=False)

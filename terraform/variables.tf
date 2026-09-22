@@ -18,15 +18,27 @@ variable "name_prefix" {
 }
 
 variable "zones" {
-  description = "Zones used for K3s control-plane nodes."
+  description = "Zones used for K3s control-plane nodes. Первая зона (master-1) — постоянная нода для повседневного использования; не убирайте её из списка, иначе Terraform уничтожит инстанс вместе с данными Patroni на его локальном диске."
   type        = list(string)
-  default     = ["ru-central1-a", "ru-central1-b"]
+  default     = ["ru-central1-a"]
 }
 
 variable "worker_zones" {
-  description = "Zones used for K3s worker nodes."
+  description = "Zones used for K3s worker nodes. Пусто по умолчанию (дешёвый однонодовый режим для личного использования); заполните для временного демо-кластера перед защитой."
   type        = list(string)
-  default     = ["ru-central1-c"]
+  default     = []
+}
+
+variable "preemptible" {
+  description = "Прерываемые (preemptible) инстансы дешевле, но могут быть остановлены платформой без предупреждения (макс. 24ч uptime) — не годится для узла с постоянно работающим приложением."
+  type        = bool
+  default     = true
+}
+
+variable "boot_disk_type" {
+  description = "network-hdd дешевле, network-ssd — быстрее. Для личного некритичного использования HDD достаточно."
+  type        = string
+  default     = "network-hdd"
 }
 
 variable "subnets" {

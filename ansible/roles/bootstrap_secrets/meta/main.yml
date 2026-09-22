@@ -1,0 +1,6 @@
+---
+galaxy_info:
+  author: classapp
+  description: Idempotently bootstrap classapp-secrets and classapp-grafana K8s secrets
+  min_ansible_version: "2.14"
+dependencies: []

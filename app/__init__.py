@@ -1,3 +1,6 @@
+"""Фабрика Flask-приложения classapp: конфигурация, логирование, bootstrap
+администратора и регистрация blueprint'ов/health-эндпоинта."""
+
 import os
 import logging
 import sys
@@ -18,6 +21,8 @@ except ImportError:
 
 
 def configure_json_logging(app):
+    """Настраивает JSON-логирование приложения в файл (с фолбэком в instance_path,
+    если основной путь недоступен по правам)."""
     configured_log_path = app.config.get("APP_JSON_LOG_PATH", "/var/log/classapp/app.json.log")
     log_path = configured_log_path
     log_dir = os.path.dirname(log_path)
@@ -57,6 +62,8 @@ def configure_json_logging(app):
 
 
 def create_app(config_object=None):
+    """Application factory: собирает Flask-приложение из указанного класса
+    конфигурации, инициализирует БД, bootstrap-админа, метрики и роуты."""
     if not config_object:
         config_object = os.getenv("FLASK_CONFIG", "config.DevConfig")
 

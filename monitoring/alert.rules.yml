@@ -1,0 +1,23 @@
+groups:
+  - name: classapp
+    rules:
+      - alert: InstanceDown
+        expr: up{job="classapp"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "classapp instance is down"
+          description: "Prometheus не может достучаться до {{ $labels.instance }} дольше 2 минут."
+
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(flask_http_request_total{status=~"5.."}[5m]))
+            /
+          sum(rate(flask_http_request_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High 5xx rate on classapp"
+          description: "Доля ответов 5xx превышает 5% за последние 5 минут."

@@ -1,0 +1,27 @@
+# Временный полный 2+1 HA-кластер для демонстрации на защите диплома.
+#
+# Использование:
+#   cp terraform.tfvars.demo.example terraform.tfvars.demo
+#   terraform apply -var-file=terraform.tfvars.demo
+#   ... показываете HPA/реплики/Patroni failover на защите ...
+#   terraform apply -var-file=terraform.tfvars.example   # обратно на 1 дешёвую ноду
+#
+# master-1 (ru-central1-a) не меняется между обычным и demo tfvars — Terraform
+# не тронет и не пересоздаст этот инстанс, данные Patroni на нём не теряются.
+# Пересоздаются/удаляются только добавленные master-2 и worker-1.
+
+yc_token       = "replace-with-short-lived-token"
+cloud_id       = "b1gxxxxxxxxxxxxxxxxxx"
+folder_id      = "b1xxxxxxxxxxxxxxxxxx"
+ssh_public_key = "ssh-ed25519 AAAA..."
+
+allowed_ssh_cidrs = ["203.0.113.10/32"]
+
+name_prefix = "classapp"
+
+zones        = ["ru-central1-a", "ru-central1-b"]
+worker_zones = ["ru-central1-c"]
+
+# Не preemptible на время защиты — не хотим, чтобы Яндекс отобрал ноду посреди показа.
+preemptible     = false
+boot_disk_type  = "network-ssd"

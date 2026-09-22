@@ -1,3 +1,6 @@
+"""HTML-страницы и JSON API classapp: аутентификация, задачи, новости,
+учёт взносов/расходов, состав класса и управление пользователями."""
+
 import json
 import os
 from datetime import datetime
@@ -43,11 +46,13 @@ ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 
 
 def current_user():
+    """Возвращает залогиненного User по session['user_id'] либо None."""
     user_id = session.get("user_id")
     return db.session.get(User, user_id) if user_id else None
 
 
 def _has_allowed_extension(filename, allowed_extensions):
+    """True, если расширение файла входит в белый список."""
     if "." not in filename:
         return False
     extension = filename.rsplit(".", 1)[1].lower()
@@ -55,6 +60,7 @@ def _has_allowed_extension(filename, allowed_extensions):
 
 
 def _file_size_exceeds_limit(file_storage, max_bytes):
+    """Проверяет размер загружаемого файла, не читая его целиком в память."""
     if not max_bytes:
         return False
     stream = file_storage.stream
@@ -72,6 +78,8 @@ def _save_uploaded_file(
     destination_folder,
     field_error_message,
 ):
+    """Валидирует и сохраняет загруженный файл под уникальным именем.
+    Возвращает (stored_name, None) либо (None, сообщение об ошибке)."""
     original_name = secure_filename(file_storage.filename)
     if not original_name:
         return None, "Укажите файл с допустимым именем."
@@ -90,6 +98,8 @@ def _save_uploaded_file(
 
 
 def auth_required(view):
+    """Декоратор для JSON API: требует активную сессию, иначе 401."""
+
     @wraps(view)
     def wrapped(*args, **kwargs):
         if not current_user():
@@ -100,6 +110,8 @@ def auth_required(view):
 
 
 def admin_required(view):
+    """Декоратор для JSON API: требует роль admin, иначе 403."""
+
     @wraps(view)
     @auth_required
     def wrapped(*args, **kwargs):
@@ -138,6 +150,7 @@ def admin_required_page(view):
 
 
 def user_json(user):
+    """Сериализация User для JSON API."""
     return {
         "id": user.id,
         "full_name": user.full_name,
@@ -148,10 +161,12 @@ def user_json(user):
 
 
 def task_json(task):
+    """Сериализация Task для JSON API."""
     return {"id": task.id, "title": task.title, "description": task.description or "", "status": task.status, "status_label": STATUS_LABELS[task.status], "created_at": task.created_at.strftime("%d.%m.%Y")}
 
 
 def news_json(news):
+    """Сериализация News для JSON API."""
     return {
         "id": news.id,
         "title": news.title,

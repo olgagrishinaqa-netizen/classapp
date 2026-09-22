@@ -1,0 +1,83 @@
+---
+# Идемпотентный bootstrap секретов приложения и Grafana. Выполняется один
+# раз — если Secret уже существует, значения не перегенерируются и не
+# перезаписываются (иначе на каждом прогоне плейбука менялся бы пароль
+# Postgres в секрете без изменения самого Postgres, и приложение переставало
+# бы логиниться в БД). Это то, чего не хватало в CI (deploy.yml только читает
+# уже существующий classapp-secrets), и что раньше приходилось делать руками.
+
+- name: Проверить, существует ли classapp-secrets
+  ansible.builtin.command: kubectl -n default get secret classapp-secrets
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  register: classapp_secret_check
+  failed_when: false
+  changed_when: false
+
+- name: Сгенерировать и создать classapp-secrets (только при первом bootstrap)
+  when: classapp_secret_check.rc != 0
+  block:
+    - name: Сгенерировать случайные значения
+      ansible.builtin.set_fact:
+        _bootstrap_db_password: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
+        _bootstrap_secret_key: "{{ lookup('password', '/dev/null length=48 chars=ascii_letters,digits') }}"
+        _bootstrap_admin_password: "{{ lookup('password', '/dev/null length=16 chars=ascii_letters,digits') }}"
+
+    - name: Создать Secret classapp-secrets
+      ansible.builtin.command: >
+        kubectl -n default create secret generic classapp-secrets
+        --from-literal=db-password={{ _bootstrap_db_password }}
+        --from-literal=secret-key={{ _bootstrap_secret_key }}
+        --from-literal=admin-phone={{ classapp_admin_phone }}
+        --from-literal=admin-password={{ _bootstrap_admin_password }}
+        --from-literal=database-url=postgresql://postgres:{{ _bootstrap_db_password }}@classapp-db-master:5432/classapp?sslmode=require
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+
+    - name: Показать сгенерированные креды администратора (только сейчас, больше не повторится)
+      ansible.builtin.debug:
+        msg: >-
+          Bootstrap-админ classapp — СОХРАНИТЕ СЕЙЧАС, повторно эти значения
+          нигде не выводятся: телефон={{ classapp_admin_phone }},
+          пароль={{ _bootstrap_admin_password }}
+
+- name: Проверить, существует ли namespace monitoring
+  ansible.builtin.command: kubectl get namespace monitoring
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  register: monitoring_ns_check
+  failed_when: false
+  changed_when: false
+
+- name: Создать namespace monitoring
+  ansible.builtin.command: kubectl create namespace monitoring
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  when: monitoring_ns_check.rc != 0
+
+- name: Проверить, существует ли classapp-grafana
+  ansible.builtin.command: kubectl -n monitoring get secret classapp-grafana
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  register: grafana_secret_check
+  failed_when: false
+  changed_when: false
+
+- name: Сгенерировать и создать classapp-grafana (только при первом bootstrap)
+  when: grafana_secret_check.rc != 0
+  block:
+    - name: Сгенерировать пароль Grafana
+      ansible.builtin.set_fact:
+        _bootstrap_grafana_password: "{{ lookup('password', '/dev/null length=16 chars=ascii_letters,digits') }}"
+
+    - name: Создать Secret classapp-grafana
+      ansible.builtin.command: >
+        kubectl -n monitoring create secret generic classapp-grafana
+        --from-literal=admin-user=admin
+        --from-literal=admin-password={{ _bootstrap_grafana_password }}
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+
+    - name: Показать сгенерированный пароль Grafana (только сейчас)
+      ansible.builtin.debug:
+        msg: "Grafana admin — СОХРАНИТЕ СЕЙЧАС: user=admin, пароль={{ _bootstrap_grafana_password }}"

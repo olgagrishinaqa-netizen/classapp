@@ -106,11 +106,15 @@ resource "yandex_compute_instance" "k3s" {
     core_fraction = var.vm_core_fraction
   }
 
+  scheduling_policy {
+    preemptible = var.preemptible
+  }
+
   boot_disk {
     initialize_params {
       image_id = data.yandex_compute_image.ubuntu.id
       size     = var.boot_disk_size_gb
-      type     = "network-ssd"
+      type     = var.boot_disk_type
     }
   }
 
