@@ -13,17 +13,19 @@
     state: present
     update_cache: true
 
-- name: Install kubectl
-  ansible.builtin.get_url:
-    url: https://dl.k8s.io/release/v1.30.8/bin/linux/amd64/kubectl
-    dest: /usr/local/bin/kubectl
-    mode: "0755"
+# kubectl отдельно не качаем: dl.k8s.io резолвится только в IPv6, а с этой
+# VM до него нет маршрута. Устанавливать не нужно — инсталлятор k3s сам
+# создаёт симлинк /usr/local/bin/kubectl на свой бинарник (роль k3s ниже).
 
 - name: Install Helm signing key
   ansible.builtin.get_url:
     url: https://packages.buildkite.com/helm-linux/helm-debian/any/helm.asc
     dest: /etc/apt/keyrings/helm.asc
     mode: "0644"
+  register: helm_key_download
+  retries: 5
+  delay: 10
+  until: helm_key_download is succeeded
 
 - name: Add Helm repository
   ansible.builtin.apt_repository:
