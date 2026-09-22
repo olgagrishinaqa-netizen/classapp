@@ -76,6 +76,13 @@ data "yandex_compute_image" "ubuntu" {
 }
 
 locals {
+  # yandex_vpc_subnet.classapp индексируется ключами var.subnets ("a"/"b"/"c"),
+  # а не названиями зон — строим обратную карту "зона -> id подсети" для
+  # использования в network_interface ниже.
+  subnet_id_by_zone = {
+    for key, subnet in var.subnets : subnet.zone => yandex_vpc_subnet.classapp[key].id
+  }
+
   nodes = merge(
     {
       for index, zone in var.zones :
@@ -119,7 +126,7 @@ resource "yandex_compute_instance" "k3s" {
   }
 
   network_interface {
-    subnet_id          = yandex_vpc_subnet.classapp[each.value.zone].id
+    subnet_id          = local.subnet_id_by_zone[each.value.zone]
     nat                = true
     security_group_ids = [yandex_vpc_security_group.k3s.id]
   }
