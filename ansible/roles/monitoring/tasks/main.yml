@@ -1,11 +1,3 @@
----
-- name: Add prometheus-community Helm repository
-  kubernetes.core.helm_repository:
-    name: prometheus-community
-    repo_url: https://prometheus-community.github.io/helm-charts
-  environment:
-    K8S_AUTH_KUBECONFIG: "{{ kubeconfig }}"
-
 - name: Create monitoring namespace
   kubernetes.core.k8s:
     name: "{{ monitoring_namespace }}"
@@ -15,16 +7,34 @@
   environment:
     K8S_AUTH_KUBECONFIG: "{{ kubeconfig }}"
 
-- name: Install kube-prometheus-stack
-  kubernetes.core.helm:
-    name: "{{ helm_release_name }}"
-    chart_ref: prometheus-community/kube-prometheus-stack
-    release_namespace: "{{ monitoring_namespace }}"
-    create_namespace: true
-    values_files:
-      - "{{ role_path }}/files/values.yaml"
-    wait: true
-    timeout: 10m
+- name: Install kube-prometheus-stack via K3s Helm controller
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: helm.cattle.io/v1
+      kind: HelmChart
+      metadata:
+        name: "{{ helm_release_name }}"
+        namespace: kube-system
+      spec:
+        chart: kube-prometheus-stack
+        repo: https://prometheus-community.github.io/helm-charts
+        targetNamespace: "{{ monitoring_namespace }}"
+        createNamespace: true
+  environment:
+    K8S_AUTH_KUBECONFIG: "{{ kubeconfig }}"
+
+- name: Configure kube-prometheus-stack values via K3s Helm controller
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: helm.cattle.io/v1
+      kind: HelmChartConfig
+      metadata:
+        name: "{{ helm_release_name }}"
+        namespace: kube-system
+      spec:
+        valuesContent: "{{ lookup('ansible.builtin.file', role_path + '/files/values.yaml') }}"
   environment:
     K8S_AUTH_KUBECONFIG: "{{ kubeconfig }}"
 
