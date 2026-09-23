@@ -1,3 +1,23 @@
+# Облегчённый профиль под ноду 2 vCPU (50%) / 4 ГБ RAM / HDD: на ней же живут
+# k3s, Patroni x2, etcd, web x3, nginx x2 — мониторинг не должен съедать всё.
+
+defaultRules:
+  create: false # сотни стандартных PrometheusRule — лишняя нагрузка на HDD/CPU
+
+alertmanager:
+  enabled: false # алертинг для диплома не требуется, экономим RAM
+
+# В k3s control plane встроен в один процесс — эти цели недоступны и просто
+# висят как down, создавая лишние ServiceMonitor и скрейпы.
+kubeEtcd:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeProxy:
+  enabled: false
+
 grafana:
   enabled: true
   admin:
@@ -5,6 +25,13 @@ grafana:
   service:
     type: NodePort
     nodePort: 30300
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+
 prometheus:
   service:
     type: NodePort
@@ -12,7 +39,34 @@ prometheus:
   prometheusSpec:
     serviceMonitorSelectorNilUsesHelmValues: false
     podMonitorSelectorNilUsesHelmValues: false
+    scrapeInterval: 60s # вместо 30s — вдвое меньше записей на диск
+    retention: 2d
+    retentionSize: 2GB
+    resources:
+      requests:
+        cpu: 100m
+        memory: 400Mi
+      limits:
+        memory: 768Mi
+
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+
 nodeExporter:
   enabled: true
 kubeStateMetrics:
   enabled: true
+
+prometheus-node-exporter:
+  resources:
+    limits:
+      memory: 50Mi
+kube-state-metrics:
+  resources:
+    limits:
+      memory: 100Mi
