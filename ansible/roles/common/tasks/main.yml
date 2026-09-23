@@ -13,6 +13,16 @@
     state: present
     update_cache: true
 
+# kubernetes.core.k8s/helm модули (роли bootstrap_secrets, monitoring) — это
+# Python-модули, им нужна библиотека kubernetes на самом хосте, не только
+# сам kubectl.
+- name: Install Python kubernetes client library
+  ansible.builtin.pip:
+    name:
+      - kubernetes
+      - jsonpatch # часто требуется вместе с kubernetes.core.k8s для патчей
+    executable: pip3
+
 # kubectl отдельно не качаем — это лишняя точка отказа (сеть с этой VM
 # периодически нестабильна для внешних HTTPS-загрузок, независимо от хоста).
 # Устанавливать не нужно — инсталлятор k3s сам создаёт симлинк
