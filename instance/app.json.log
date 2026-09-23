@@ -1,0 +1,2 @@
+{"timestamp": "2026-09-23 15:01:45,800", "level": "INFO", "message": "Admin bootstrap skipped: table 'user' does not exist yet; waiting for Alembic migrations.", "path": "/home/userolga/classapp/app/__init__.py", "line": 115}
+{"timestamp": "2026-09-23 15:01:45,813", "level": "ERROR", "message": "structured log check", "path": "/home/userolga/classapp/tests/test_logging.py", "line": 6}
