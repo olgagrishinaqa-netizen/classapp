@@ -3,13 +3,8 @@
 # автоопределение интерпретатора (interpreter_python=auto_silent) иногда
 # промахивается мимо него, поэтому задаём путь явно.
 ansible_python_interpreter: /usr/bin/python3
-k3s_version: v1.30.8+k3s1
-# k3s_token намеренно не хранится здесь в открытом виде — задавайте его через
-# group_vars/vault.yml (ansible-vault, см. vault.yml.example) либо флагом
-# `-e k3s_token=$(openssl rand -hex 32)` при запуске playbook.
 k3s_api_endpoint: "{{ hostvars[groups['k3s_master'][0]]['ansible_host'] }}"
 k3s_api_port: 6443
 monitoring_namespace: monitoring
 helm_release_name: kube-prometheus-stack
-kubeconfig: /etc/rancher/k3s/k3s.yaml
 classapp_admin_phone: "79990000000"

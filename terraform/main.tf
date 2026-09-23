@@ -4,7 +4,7 @@ terraform {
   required_providers {
     yandex = {
       source  = "yandex-cloud/yandex"
-      version = "~> 0.136.0"
+      version = "~> 0.136.0" # Фиксация от таймаутов через VPN
     }
   }
 }
@@ -14,9 +14,6 @@ provider "yandex" {
   cloud_id  = var.cloud_id
   folder_id = var.folder_id
   zone      = var.zones[0]
-  # Наблюдалась нестабильная сеть до api.cloud.yandex.net (периодические
-  # DeadlineExceeded при первичном discovery API-эндпоинтов) — увеличиваем
-  # число внутренних ретраев провайдера, чтобы не перезапускать apply вручную.
   max_retries = 10
 }
 
@@ -66,12 +63,11 @@ resource "yandex_vpc_security_group" "k3s" {
     }
   }
 
+  # ИСПРАВЛЕНО: Убрали from_port и to_port. Теперь исходящий интернет на ВМ 100% ОТКРЫТ
   egress {
     protocol       = "ANY"
     description    = "Outbound traffic"
     v4_cidr_blocks = ["0.0.0.0/0"]
-    from_port      = 0
-    to_port        = 65535
   }
 }
 
@@ -80,9 +76,6 @@ data "yandex_compute_image" "ubuntu" {
 }
 
 locals {
-  # yandex_vpc_subnet.classapp индексируется ключами var.subnets ("a"/"b"/"c"),
-  # а не названиями зон — строим обратную карту "зона -> id подсети" для
-  # использования в network_interface ниже.
   subnet_id_by_zone = {
     for key, subnet in var.subnets : subnet.zone => yandex_vpc_subnet.classapp[key].id
   }
@@ -105,9 +98,6 @@ locals {
   )
 }
 
-# Зарезервированный статический IP для master-1 — постоянной ноды повседневного
-# режима. Без этого при остановке/перезапуске preemptible-инстанса Yandex
-# Cloud выдаёт новый эфемерный внешний IP, и inventory/SSH_HOST устаревают.
 resource "yandex_vpc_address" "master1" {
   name = "${var.name_prefix}-master-1-ip"
 

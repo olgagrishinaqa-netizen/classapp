@@ -38,9 +38,33 @@
   environment:
     K8S_AUTH_KUBECONFIG: "{{ kubeconfig }}"
 
+# HelmChart CR применяется мгновенно, но сам chart k3s ставит асинхронно
+# фоновой Job — раньше это ждал `wait: true` у kubernetes.core.helm, при
+# переходе на HelmChart CRD эта гарантия исчезла. ServiceMonitor ниже —
+# CRD, которую создаёт сам kube-prometheus-stack, поэтому явно ждём её.
+- name: Wait for Prometheus Operator CRDs (ServiceMonitor) to be installed
+  kubernetes.core.k8s_info:
+    api_version: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    name: servicemonitors.monitoring.coreos.com
+  register: servicemonitor_crd
+  retries: 30
+  delay: 20
+  until: servicemonitor_crd.resources | length > 0
+  environment:
+    K8S_AUTH_KUBECONFIG: "{{ kubeconfig }}"
+
+# kubernetes.core.k8s с src: читает файл на УДАЛЁННОМ хосте (модуль исполняется
+# там же, где kubeconfig), а не на control-ноде — поэтому сначала копируем файл.
+- name: Copy classapp monitoring resources manifest to remote host
+  ansible.builtin.copy:
+    src: "{{ role_path }}/files/classapp-monitoring.yaml"
+    dest: /tmp/classapp-monitoring.yaml
+    mode: "0644"
+
 - name: Apply classapp monitoring resources
   kubernetes.core.k8s:
     state: present
-    src: "{{ role_path }}/files/classapp-monitoring.yaml"
+    src: /tmp/classapp-monitoring.yaml
   environment:
     K8S_AUTH_KUBECONFIG: "{{ kubeconfig }}"
