@@ -60,8 +60,9 @@ variable "allowed_ssh_cidrs" {
 }
 
 variable "public_tcp_ports" {
-  type    = list(number)
-  default = [80, 443, 3000, 30080, 30900]
+  description = "30080 — приложение (nginx NodePort), 30300 — Grafana, 30900 — Prometheus (NodePort'ы заданы в k8s/ и ansible/roles/monitoring/files/values.yaml)."
+  type        = list(number)
+  default     = [80, 443, 3000, 30080, 30300, 30900]
 }
 
 variable "image_family" {
