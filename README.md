@@ -8,9 +8,10 @@ CI/CD (GitHub Actions) и мониторинг (Prometheus + Grafana).
 
 - **Backend**: Flask, SQLAlchemy, Alembic (миграции), Flask-Login, Flask-WTF
 - **БД**: PostgreSQL 15
-- **Контейнеризация**: Docker, Docker Compose
-- **Инфраструктура**: Terraform (Yandex Cloud — VM, сеть, Container Registry)
-- **CI/CD**: GitHub Actions (lint → test → build → push → deploy)
+- **Контейнеризация**: Docker (образ в GHCR), Docker Compose для локальной разработки
+- **Оркестрация**: K3s (Kubernetes), Patroni + etcd для PostgreSQL
+- **Инфраструктура**: Terraform (Yandex Cloud — VM, сеть, security groups), Ansible
+- **CI/CD**: GitHub Actions (CI → build/push в GHCR → deploy в K3s)
 - **Мониторинг**: Prometheus, Grafana; метрики Flask через `prometheus-flask-exporter`
 - **Уведомления**: Telegram-бот о результатах CI/CD
 
@@ -20,12 +21,13 @@ CI/CD (GitHub Actions) и мониторинг (Prometheus + Grafana).
 app/                  # исходный код приложения (Flask app factory, extensions)
 alembic/              # миграции БД
 terraform/            # IaC: VPC, multi-zone VM и security groups в Yandex Cloud
-ansible/              # роли common, k3s и monitoring
+ansible/              # роли common, k3s, bootstrap_secrets и monitoring
+k8s/                  # манифесты K3s (etcd, Patroni, web, nginx, HPA, migrate Job)
 tests/                # автотесты (pytest)
 monitoring/           # конфиг Prometheus
 .github/workflows/    # CI/CD пайплайны
 docker-compose.dev.yml    # локальная разработка
-docker-compose.prod.yml   # продакшн-стек (app + db + prometheus + grafana)
+docker-compose.prod.yml   # устаревший docker-стек, в деплое не используется (прод работает на K3s)
 ```
 
 ## Запуск локально
@@ -68,16 +70,22 @@ locust -f tests/load/locustfile.py --host=http://localhost:8000 \
 
 | Workflow | Триггер | Что делает |
 |---|---|---|
-| `ci.yml` | push в любую ветку, PR в main/master | линтер (pre-commit) → автотесты (pytest + Postgres-сервис) → пробная сборка образа → уведомление в Telegram |
-| `build.yml` | push в любую ветку | сборка Docker-образа, пуш в GHCR с тегом `<ветка>-<sha>`; тег `latest` обновляется только на `main` |
-| `deploy.yml` | успешный `build.yml` на `main` | копирует `docker-compose.prod.yml` на прод-VM по SSH, поднимает стек, применяет миграции Alembic, уведомление в Telegram |
+| `ci.yml` (CI) | push в `main`, PR в `main` | линтер (pre-commit) → автотесты (pytest + Postgres-сервис) → пробная сборка образа без пуша → уведомление в Telegram |
+| `build.yml` (Build and Push to GHCR) | успешный `ci.yml`, ручной запуск | сборка Docker-образа, пуш в GHCR с тегом `<ветка>-<sha>` (в деплое используется `main-<sha>`); тег `latest` обновляется только на `main` |
+| `deploy.yml` (Deploy to Production VM1) | успешный `build.yml` на `main` | ждёт готовности SSH, копирует `k8s/`, `nginx.conf` и конфиги на master-ноду K3s, применяет манифесты (etcd, Patroni), запускает Alembic Job, обновляет web Deployment с образом `main-<sha>`, проверяет rollout и `/healthz`, уведомляет в Telegram |
+
+Цепочка: `push в main → CI → build → deploy`.
 
 ### Необходимые GitHub Secrets
 
-- `SSH_HOST`, `SSH_KEY` — доступ к прод-VM
-- `APP_SECRET_KEY`, `APP_DB_PASSWORD` — переменные окружения приложения
+- `SSH_HOST` — публичный (статический) IP master-1, см. `terraform output master1_static_ip`
+- `SSH_KEY` — приватный SSH-ключ, парный к `ssh_public_key` из terraform
 - `GRAFANA_ADMIN_PASSWORD` — пароль администратора Grafana
-- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — уведомления о результатах сборки/деплоя
+- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — уведомления (необязательны: без них уведомления просто не отправляются)
+
+`APP_SECRET_KEY`/`APP_DB_PASSWORD` деплоем не используются: секрет
+`classapp-secrets` создаётся на самой ноде ролью Ansible `bootstrap_secrets`.
+`GITHUB_TOKEN` для пуша в GHCR выдаётся GitHub автоматически.
 
 ## Развертывание инфраструктуры с нуля (IaC)
 
@@ -289,15 +297,12 @@ GHCR, а `deploy.yml` запускается через `workflow_run` посл�
 `main`. Deploy применяет Kubernetes-манифесты, выполняет Alembic Job до
 обновления web Deployment и проверяет rollout.
 
-Шаги SSH/SCP в `deploy.yml` (`appleboy/ssh-action`, `appleboy/scp-action`)
-обёрнуты в `Wandalen/wretry.action` (3 попытки, задержка 15с). Причина:
-эти экшены при старте скачивают свой бинарь (`drone-ssh`) с CDN GitHub
-Releases, и изредка это скачивание падает с транзиентным 502/504 от CDN
-**еще до** SSH-подключения к серверу — из-за чего наш идемпотентный
-деплой-скрипт вообще не успевает запуститься. Retry-обёртка решает эту
-проблему автоматически, без участия человека; повторный запуск самого
-деплой-скрипта безопасен, так как все его шаги идемпотентны (`kubectl apply`,
-Job с уникальным именем по SHA коммита и т.д.).
+Шаги `deploy.yml` выполняются обычными `ssh`-командами с собственным
+retry (3 попытки, задержка 15 с). Перед ними шаг «Wait for SSH to become
+responsive» до ~10 минут ждёт реального SSH-логина на master-ноду (нода —
+preemptible и может быть недоступна сразу после перезапуска платформой).
+Повторный запуск безопасен: все шаги идемпотентны (`kubectl apply`,
+пересоздание Job миграций).
 
 После установки доступны:
 - Grafana: `http://<NODE_IP>:30300`
