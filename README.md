@@ -66,22 +66,20 @@ locust -f tests/load/locustfile.py --host=http://localhost:8000 \
 
 ## CI/CD пайплайн
 
-Три workflow в `.github/workflows/`:
+Два workflow в `.github/workflows/` (деплой выполняется на самой ВМ, см. ниже):
 
 | Workflow | Триггер | Что делает |
 |---|---|---|
 | `ci.yml` (CI) | push в `main`, PR в `main` | линтер (pre-commit) → автотесты (pytest + Postgres-сервис) → пробная сборка образа без пуша → уведомление в Telegram |
 | `build.yml` (Build and Push to GHCR) | успешный `ci.yml`, ручной запуск | сборка Docker-образа, пуш в GHCR с тегом `<ветка>-<sha>` (в деплое используется `main-<sha>`); тег `latest` обновляется только на `main` |
-| `deploy.yml` (Deploy to Production VM1) | успешный `build.yml` на `main` | ждёт готовности SSH, копирует `k8s/`, `nginx.conf` и конфиги на master-ноду K3s, применяет манифесты (etcd, Patroni), запускает Alembic Job, обновляет web Deployment с образом `main-<sha>`, проверяет rollout и `/healthz`, уведомляет в Telegram |
 
-Цепочка: `push в main → CI → build → deploy`.
+Цепочка: `push в main → CI → build (образ в GHCR) → pull-деплой на ВМ`.
 
 ### Необходимые GitHub Secrets
 
-- `SSH_HOST` — публичный (статический) IP master-1, см. `terraform output master1_static_ip`
-- `SSH_KEY` — приватный SSH-ключ, парный к `ssh_public_key` из terraform
-- `GRAFANA_ADMIN_PASSWORD` — пароль администратора Grafana
-- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — уведомления (необязательны: без них уведомления просто не отправляются)
+- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — уведомления CI/build (необязательны)
+
+SSH-секреты (`SSH_HOST`, `SSH_KEY`) больше не нужны: раннеры GitHub не могут достучаться до порта 22 ВМ, поэтому деплой сделан pull-моделью.
 
 `APP_SECRET_KEY`/`APP_DB_PASSWORD` деплоем не используются: секрет
 `classapp-secrets` создаётся на самой ноде ролью Ansible `bootstrap_secrets`.
@@ -161,10 +159,8 @@ k3s использует свой встроенный containerd). Роль `k3
 логирование» ниже. Хотите зашифровать `vault.yml` вместо простого файла —
 используйте `ansible-vault encrypt group_vars/vault.yml`.
 
-После первого успешного прогона обновите GitHub secret `SSH_HOST` — он должен
-указывать на публичный IP первого мастера (`terraform output k3s_public_ips`),
-т.к. `deploy.yml` применяет манифесты через SSH на этот узел и локальный
-`kubectl`/`kubeconfig` (`/etc/rancher/k3s/k3s.yaml`) этой control-plane ноды.
+После этого установите на master-1 pull-деплой (см. «Деплой (pull-модель на ВМ)» выше):
+он работает с локальным `kubectl`/`kubeconfig` (`/etc/rancher/k3s/k3s.yaml`) этой ноды.
 
 ### Конфигурация Patroni и etcd в Kubernetes
 
@@ -225,7 +221,7 @@ k3s использует свой встроенный containerd). Роль `k3
 - **Секреты веб-приложения**: `classapp-web` и `classapp-migrate` читают
   `DB_PASSWORD`, `SECRET_KEY`, `ADMIN_PHONE`, `ADMIN_PASSWORD`, `DATABASE_URL`
   из секрета `classapp-secrets` через `secretKeyRef`.
-  В `deploy.yml` перед миграциями выполняется идемпотентная «нормализация» секрета:
+  В `scripts/pull-deploy/deploy-steps.sh` перед миграциями выполняется идемпотентная «нормализация» секрета:
   из текущего `db-password` автоматически собирается корректный
   `database-url` (`...@classapp-db-master:5432/classapp?sslmode=require`, с URL-encoding пароля).
 
@@ -293,16 +289,31 @@ Patroni API `/metrics` и Grafana dashboard с HTTP 5xx, готовностью 
 ### CI/CD и endpoints
 
 После push в `main` `ci.yml` выполняет проверки, `build.yml` публикует образ в
-GHCR, а `deploy.yml` запускается через `workflow_run` после успешной сборки
-`main`. Deploy применяет Kubernetes-манифесты, выполняет Alembic Job до
-обновления web Deployment и проверяет rollout.
+GHCR, а `build.yml` публикует образ в GHCR. Дальше pull-деплой на ВМ применяет
+Kubernetes-манифесты, выполняет Alembic Job до обновления web Deployment и
+проверяет rollout.
 
-Шаги `deploy.yml` выполняются обычными `ssh`-командами с собственным
-retry (3 попытки, задержка 15 с). Перед ними шаг «Wait for SSH to become
-responsive» до ~10 минут ждёт реального SSH-логина на master-ноду (нода —
-preemptible и может быть недоступна сразу после перезапуска платформой).
-Повторный запуск безопасен: все шаги идемпотентны (`kubectl apply`,
-пересоздание Job миграций).
+### Деплой (pull-модель на ВМ)
+
+Раннеры GitHub Actions не достучались до SSH прод-ВМ (пакеты с их адресов не
+доходят), поэтому деплой выполняется на самой ВМ: systemd-таймер
+`classapp-pull-deploy` каждые 2 минуты проверяет, что в `main` появился новый
+коммит и в GHCR уже опубликован образ `main-<sha>` (то есть CI и build прошли),
+затем применяет манифесты из `k8s/` (etcd, Patroni, Alembic Job, web+nginx),
+проверяет rollout (при сбое — `rollout undo`) и шлёт результат в Telegram.
+Скрипты: [scripts/pull-deploy/](scripts/pull-deploy/). Разовая установка на ВМ:
+
+```bash
+git clone https://github.com/olgagrishinaqa-netizen/classapp.git ~/classapp-src
+cd ~/classapp-src && sudo bash scripts/pull-deploy/install.sh
+sudo nano /etc/classapp/pull-deploy.env        # TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID (необязательно)
+sudo systemctl start classapp-pull-deploy       # не ждать таймер
+journalctl -u classapp-pull-deploy -f           # логи
+```
+
+Логика деплоя (`deploy-steps.sh`) берётся из checkout нужного коммита, поэтому её
+изменения подхватываются автоматически. Упавший коммит повторяется до 3 раз,
+затем ждёт нового коммита.
 
 После установки доступны:
 - Grafana: `http://<NODE_IP>:30300`
