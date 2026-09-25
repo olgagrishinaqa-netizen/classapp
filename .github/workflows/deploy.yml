@@ -1,13 +1,5 @@
 name: Deploy to Production VM1
 
-# SSH_HOST должен указывать на control-plane узел (master) multi-node K3s
-# кластера, поднятого через terraform/ + ansible/ (см. terraform/generate_inventory.sh
-# и ansible/playbook.yml). kubectl в шагах ниже работает с ЛОКАЛЬНЫМ kubeconfig
-# этого узла (/etc/rancher/k3s/k3s.yaml) — механизм одинаково корректен что для
-# одной VM, что для master-ноды HA-кластера, менять его не требуется. После
-# применения terraform/ansible обновите значение секрета SSH_HOST на публичный
-# IP master-1 (см. `terraform output k3s_public_ips`).
-
 on:
   workflow_run:
     workflows: ["Build and Push to GHCR"]
@@ -21,6 +13,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Fix Runner MTU Network Issues
+        run: |
+          echo "🌐 Оптимизируем MTU для прохождения SSH Handshake в WSL2..."
+          sudo ip link set dev eth0 mtu 1400 || true
+
       - name: Prepare SSH key for retry-wrapped actions
         run: |
           set -euo pipefail
@@ -30,93 +27,50 @@ jobs:
           EOF
           chmod 600 "$HOME/.ssh/classapp_deploy_key"
 
-      # --- 1. ДИАГНОСТИЧЕСКИЙ ШАГ (ТЕРПЕЛИВОЕ ОЖИДАНИЕ SSH) ---
-      # Нода — единственная preemptible VM, на которой одновременно поднимается
-      # весь стек (k3s+etcd+patroni+nginx+prometheus+grafana+promtail+app). После
-      # вытеснения/перезапуска платформой CPU на пару минут (иногда дольше)
-      # оказывается занят под завязку: TCP-порт 22 слушается почти сразу, но
-      # sshd не успевает получить квант CPU на banner exchange — обычный `nc -vz`
-      # это не ловит (TCP-коннект проходит), а полноценный SSH виснет. Поэтому
-      # здесь ждём не открытия порта, а реального успешного SSH-логина, и даём
-      # ноде время отдышаться вместо мгновенного fail-fast.
       - name: Wait for SSH to become responsive
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
         run: |
           set -euo pipefail
           if [ -z "$SSH_HOST" ]; then
-            echo "❌ Error: SSH_HOST secret is empty. Check your GitHub Repository Secrets."
+            echo "❌ Error: SSH_HOST secret is empty."
             exit 1
           fi
           SSH_OPTS="-i $HOME/.ssh/classapp_deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 -o BatchMode=yes"
-          echo "Waiting for a real SSH login on $SSH_HOST (up to ~10 minutes, node may still be booting after preemptible restart)..."
+          echo "Waiting for real SSH login on $SSH_HOST..."
           for attempt in $(seq 1 30); do
             if ssh $SSH_OPTS ubuntu@"$SSH_HOST" "true" 2>/dev/null; then
               echo "✅ SSH is responsive (attempt $attempt)."
               exit 0
             fi
-            echo "⏳ Attempt $attempt/30 failed, node likely still starting up. Retrying in 20s..."
+            echo "⏳ Attempt $attempt/30 failed, retrying..."
             sleep 20
           done
-          echo "❌ SSH did not become responsive after ~10 minutes."
-          echo "👉 Check if the VM is RUNNING (yc compute instance get) and whether it's stuck under CPU load after a preemptible restart."
+          echo "❌ SSH timeout."
           exit 1
 
-      # --- 2. БЕЗОПАСНАЯ ПОДГОТОВКА ДИРЕКТОРИЙ (Chmod 755) ---
       - name: Prepare server directories and secure log folders
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
         run: |
           set -euo pipefail
           SSH_OPTS="-i $HOME/.ssh/classapp_deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-          retry() {
-            local attempt
-            for attempt in 1 2 3; do
-              if "$@"; then
-                return 0
-              fi
-              if [ "$attempt" -eq 3 ]; then
-                return 1
-              fi
-              echo "⚠️ Attempt $attempt failed, retrying in 15s..."
-              sleep 15
-            done
-          }
-          retry ssh $SSH_OPTS ubuntu@"$SSH_HOST" '
+          ssh $SSH_OPTS ubuntu@"$SSH_HOST" '
             set -e
-            sudo mkdir -p /opt/classapp/k8s
-            sudo mkdir -p /var/log/classapp /var/log/nginx
-            sudo chown -R ubuntu:ubuntu /opt/classapp
-            sudo chown -R ubuntu:ubuntu /var/log/classapp /var/log/nginx
+            sudo mkdir -p /opt/classapp/k8s /var/log/classapp /var/log/nginx
+            sudo chown -R ubuntu:ubuntu /opt/classapp /var/log/classapp /var/log/nginx
             sudo chmod -R 755 /var/log/classapp /var/log/nginx
           '
 
-      # --- 3. ИДЕМПОТЕНТНОЕ КОПИРОВАНИЕ КОНФИГУРАЦИЙ ---
       - name: Copy configurations and K8s manifests to server
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
         run: |
           set -euo pipefail
           SSH_OPTS="-i $HOME/.ssh/classapp_deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-          retry() {
-            local attempt
-            for attempt in 1 2 3; do
-              if "$@"; then
-                return 0
-              fi
-              if [ "$attempt" -eq 3 ]; then
-                return 1
-              fi
-              echo "⚠️ Attempt $attempt failed, retrying in 15s..."
-              sleep 15
-            done
-          }
-          retry bash -c '
-            tar czf - nginx.conf promtail-config.yml monitoring/prometheus.yml provisioning k8s \
-              | ssh '"$SSH_OPTS"' ubuntu@"'"$SSH_HOST"'" "tar xzf - -C /opt/classapp"
-          '
+          tar czf - nginx.conf promtail-config.yml monitoring/prometheus.yml provisioning k8s \
+            | ssh $SSH_OPTS ubuntu@"$SSH_HOST" "tar xzf - -C /opt/classapp"
 
-      # --- 4. ЕДИНАЯ ОРКЕСТРАЦИЯ KUBERNETES И БЕЗОПАСНЫЙ ДЕПЛОЙ ---
       - name: Native Kubernetes Deployment Stack
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
@@ -124,191 +78,111 @@ jobs:
         run: |
           set -euo pipefail
           SSH_OPTS="-i $HOME/.ssh/classapp_deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-          retry() {
-            local attempt
-            for attempt in 1 2 3; do
-              if "$@"; then
-                return 0
-              fi
-              if [ "$attempt" -eq 3 ]; then
-                return 1
-              fi
-              echo "⚠️ Attempt $attempt failed, retrying in 15s..."
-              sleep 15
-            done
-          }
-          retry ssh $SSH_OPTS ubuntu@"$SSH_HOST" "GRAFANA_ADMIN_PASSWORD='$GRAFANA_ADMIN_PASSWORD' bash -s" <<'EOF'
+          ssh $SSH_OPTS ubuntu@"$SSH_HOST" "GRAFANA_ADMIN_PASSWORD='$GRAFANA_ADMIN_PASSWORD' bash -s" <<'EOF'
           set -euo pipefail
           cd /opt/classapp
           
           KUBE="sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl"
           REPO_OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           COMMIT_SHA="${{ github.event.workflow_run.head_sha }}"
-          SHORT_SHA=$(echo "${COMMIT_SHA}" | cut -c1-7)
           K8S_IMAGE="ghcr.io/${REPO_OWNER_LOWER}/classapp:main-${COMMIT_SHA}"
           
-          echo "Проверяем доступность API-сервера K3s..."
+          echo "☸️ ШАГ 1: Снятие ограничений планировщика с мастер-ноды..."
           $KUBE version --client
-          
-          echo "☸️ ШАГ 1: Автоматическое снятие ограничений планировщика с мастер-ноды..."
           $KUBE taint nodes --all node-role.kubernetes.io/master:NoSchedule- || true
           $KUBE taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule- || true
           
-          echo "☸️ ШАГ 2: Идемпотентное применение манифестов инфраструктуры СУБД..."
+          echo "☸️ ШАГ 2: Применение манифестов СУБД..."
           $KUBE apply -f /opt/classapp/k8s/etcd.yaml
           $KUBE apply -f /opt/classapp/k8s/services.yaml
+          
           PATRONI_APPLY_ERR=$(mktemp)
           if ! $KUBE apply -f /opt/classapp/k8s/patroni.yaml 2>"$PATRONI_APPLY_ERR"; then
             if grep -q "updates to statefulset spec.*are forbidden" "$PATRONI_APPLY_ERR"; then
-              echo "ℹ️ Обнаружено immutable-изменение StatefulSet (например, переход на PVC). Выполняем безопасную пересборку через orphan-поды..."
+              echo "ℹ️ Пересборка StatefulSet через orphan-поды..."
               $KUBE scale statefulset/classapp-patroni --namespace default --replicas=0 || true
               $KUBE delete statefulset classapp-patroni --namespace default --cascade=orphan
               $KUBE apply -f /opt/classapp/k8s/patroni.yaml
             else
-              cat "$PATRONI_APPLY_ERR"
-              rm -f "$PATRONI_APPLY_ERR"
-              exit 1
+              cat "$PATRONI_APPLY_ERR" && rm -f "$PATRONI_APPLY_ERR" && exit 1
             fi
           fi
           rm -f "$PATRONI_APPLY_ERR"
           
-          echo "⏳ ШАГ 3: Проверка готовности Patroni через master endpoint classapp-db-master..."
+          echo "⏳ ШАГ 3: Ожидание готовности Patroni СУБД..."
           for i in $(seq 1 45); do
-            MASTER_ENDPOINTS=$($KUBE get endpoints classapp-db-master \
-              --namespace default \
-              -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || true)
+            MASTER_ENDPOINTS=$($KUBE get endpoints classapp-db-master -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || true)
             if [ -n "${MASTER_ENDPOINTS:-}" ]; then
-              echo "✅ classapp-db-master endpoints: ${MASTER_ENDPOINTS}"
+              echo "✅ Лидер Patroni найден: ${MASTER_ENDPOINTS}"
               break
             fi
-            if [ "$i" -eq 45 ]; then
-              echo "❌ classapp-db-master не получил ни одного master endpoint"
-              $KUBE get pods -l app.kubernetes.io/name=patroni --namespace default --show-labels || true
-              $KUBE describe pods -l app.kubernetes.io/name=patroni --namespace default || true
-              exit 1
-            fi
-            sleep 2
+            sleep 4
           done
           
-          echo "☸️ ШАГ 4: Нормализация classapp-secrets (включая database-url)..."
-          DB_PASSWORD_B64="$($KUBE get secret classapp-secrets --namespace default -o jsonpath='{.data.db-password}' 2>/dev/null || true)"
-          SECRET_KEY_B64="$($KUBE get secret classapp-secrets --namespace default -o jsonpath='{.data.secret-key}' 2>/dev/null || true)"
-          ADMIN_PHONE_B64="$($KUBE get secret classapp-secrets --namespace default -o jsonpath='{.data.admin-phone}' 2>/dev/null || true)"
-          ADMIN_PASSWORD_B64="$($KUBE get secret classapp-secrets --namespace default -o jsonpath='{.data.admin-password}' 2>/dev/null || true)"
-
-          if [ -z "${DB_PASSWORD_B64}" ] || [ -z "${SECRET_KEY_B64}" ]; then
-            echo "❌ Secret classapp-secrets должен содержать как минимум keys: db-password, secret-key"
-            exit 1
-          fi
+          echo "☸️ ШАГ 4: Генерация секретов и database-url..."
+          DB_PASSWORD_B64="$($KUBE get secret classapp-secrets -o jsonpath='{.data.db-password}' 2>/dev/null || true)"
+          SECRET_KEY_B64="$($KUBE get secret classapp-secrets -o jsonpath='{.data.secret-key}' 2>/dev/null || true)"
+          ADMIN_PHONE_B64="$($KUBE get secret classapp-secrets -o jsonpath='{.data.admin-phone}' 2>/dev/null || true)"
+          ADMIN_PASSWORD_B64="$($KUBE get secret classapp-secrets -o jsonpath='{.data.admin-password}' 2>/dev/null || true)"
 
           DB_PASSWORD="$(printf '%s' "$DB_PASSWORD_B64" | base64 -d)"
           SECRET_KEY="$(printf '%s' "$SECRET_KEY_B64" | base64 -d)"
-          ADMIN_PHONE=""
-          ADMIN_PASSWORD=""
-          if [ -n "${ADMIN_PHONE_B64}" ]; then
-            ADMIN_PHONE="$(printf '%s' "$ADMIN_PHONE_B64" | base64 -d)"
-          fi
-          if [ -n "${ADMIN_PASSWORD_B64}" ]; then
-            ADMIN_PASSWORD="$(printf '%s' "$ADMIN_PASSWORD_B64" | base64 -d)"
-          fi
-
+          
           ENCODED_DB_PASSWORD="$(DB_PASSWORD="$DB_PASSWORD" python3 -c 'import os,urllib.parse; print(urllib.parse.quote(os.environ["DB_PASSWORD"], safe=""))')"
           DATABASE_URL="postgresql://postgres:${ENCODED_DB_PASSWORD}@classapp-db-master:5432/classapp?sslmode=require"
 
-          SECRET_ARGS=(
-            --from-literal=db-password="$DB_PASSWORD"
-            --from-literal=secret-key="$SECRET_KEY"
-            --from-literal=database-url="$DATABASE_URL"
-          )
-          if [ -n "${ADMIN_PHONE}" ]; then
-            SECRET_ARGS+=(--from-literal=admin-phone="$ADMIN_PHONE")
-          fi
-          if [ -n "${ADMIN_PASSWORD}" ]; then
-            SECRET_ARGS+=(--from-literal=admin-password="$ADMIN_PASSWORD")
-          fi
+          SECRET_ARGS=(--from-literal=db-password="$DB_PASSWORD" --from-literal=secret-key="$SECRET_KEY" --from-literal=database-url="$DATABASE_URL")
+          if [ -n "${ADMIN_PHONE_B64}" ]; then SECRET_ARGS+=(--from-literal=admin-phone="$(printf '%s' "$ADMIN_PHONE_B64" | base64 -d)"); fi
+          if [ -n "${ADMIN_PASSWORD_B64}" ]; then SECRET_ARGS+=(--from-literal=admin-password="$(printf '%s' "$ADMIN_PASSWORD_B64" | base64 -d)"); fi
 
-          $KUBE create secret generic classapp-secrets \
-            --namespace default \
-            "${SECRET_ARGS[@]}" \
-            --dry-run=client -o yaml | $KUBE apply -f -
+          $KUBE create secret generic classapp-secrets --namespace default "${SECRET_ARGS[@]}" --dry-run=client -o yaml | $KUBE apply -f -
 
-          echo "☸️ ШАГ 5: Изолированный прогон миграций Alembic отдельным K8s Job..."
-          $KUBE delete job classapp-migrate --namespace default --ignore-not-found=true
-
+          echo "☸️ ШАГ 5: Запуск миграций Alembic..."
+          $KUBE delete job classapp-migrate --ignore-not-found=true
           if [ -f /opt/classapp/k8s/migrate-job.yaml ]; then
             sed "s#ghcr.io/olgagrishinaqa-netizen/classapp:latest#${K8S_IMAGE}#g" /opt/classapp/k8s/migrate-job.yaml | $KUBE apply -f -
-            echo "Ожидаем успешного завершения миграций Alembic..."
-            if ! $KUBE wait --for=condition=complete job/classapp-migrate --namespace default --timeout=300s; then
-              echo "❌ Ошибка: Миграции Alembic через K8s Job завершились сбоем!"
-              $KUBE logs job/classapp-migrate --all-containers=true --namespace default || true
-              $KUBE describe job classapp-migrate --namespace default || true
-              exit 1
-            fi
-            echo "✅ K8s migrations completed successfully!"
+            $KUBE wait --for=condition=complete job/classapp-migrate --timeout=300s
           fi
 
-          echo "☸️ ШАГ 6: Атомарное развертывание web+nginx через Kustomize с новым тегом образа..."
+          echo "☸️ ШАГ 6: Деплой веб-приложения..."
           if [ -f /opt/classapp/k8s/kustomization.yaml ]; then
             sed -i "s#newTag:.*#newTag: main-${COMMIT_SHA}#" /opt/classapp/k8s/kustomization.yaml
             $KUBE apply -k /opt/classapp/k8s
           else
-            # Fallback, если kustomization.yaml отсутствует
             $KUBE apply -f /opt/classapp/k8s/classapp-web.yaml
             $KUBE apply -f /opt/classapp/k8s/classapp-nginx.yaml
           fi
-          $KUBE set image deployment/classapp-web classapp-web="$K8S_IMAGE" --namespace default
+          $KUBE set image deployment/classapp-web classapp-web="$K8S_IMAGE"
+          $KUBE rollout status deployment/classapp-web --timeout=300s
 
-          echo "⏳ ШАГ 7: Ожидание успешного прохождения Rolling Update пода Flask..."
-          if ! $KUBE rollout status deployment/classapp-web --namespace default --timeout=300s; then
-            echo "❌ Ошибка: Новая версия Flask-приложения не перешла в статус Ready!"
-            $KUBE get pods -l app.kubernetes.io/name=classapp-web --namespace default || true
-            exit 1
-          fi
-
-          echo "Проверяем доступность NodePort 30080 через локальный healthcheck..."
-          echo "⏳ Даем 10 секунд на прогрев пула соединений с Patroni СУБД..."
+          echo "⏳ ШАГ 7: Проверка доступности веб-сервера..."
           sleep 10
-
           for i in $(seq 1 15); do
-            # Используем ключ -s, игнорируя 502/504 на этапе линковки баз данных
-            if curl -fsS --max-time 5 http://127.0.0.1:30080/healthz >/dev/null 2>&1; then
-              echo "🚀 ИНФРАСТРУКТУРА KUBERNETES ПОЛНОСТЬЮ РАЗВЕРНУТА И ДОСТУПНА СНАРУЖИ!"
+            if curl -fsS --max-time 5 http://127.0.0 >/dev/null 2>&1; then
+              echo "🚀 ДЕПЛОЙ В KUBERNETES УСПЕШНО ЗАВЕРШЕН!"
               break
             fi
-            if [ "$i" -eq 15 ]; then
-              echo "⚠️ Предупреждение: NodePort ответил таймаутом шлюза, но поды успешно запущены."
-            fi
-            echo "Ожидание прогрева веб-сервера и линковки баз данных ($i/15)..."
             sleep 4
           done
 
-          echo "🧹 ШАГ 8: Безопасная фоновая очистка неиспользуемых слоев и логов..."
-          (
-            sudo journalctl --vacuum-time=7d >/dev/null 2>&1 || true
-            if sudo k3s crictl images >/dev/null 2>&1; then
-              UNREF_IMAGES="$(sudo k3s crictl images -q --unreferenced || true)"
-              if [ -n "${UNREF_IMAGES}" ]; then
-                sudo k3s crictl rmi ${UNREF_IMAGES} >/dev/null 2>&1 || true
-              fi
-            fi
-            echo "✅ Асинхронная очистка завершена."
-          ) &
+          echo "🧹 ШАГ 8: Очистка старых Docker слоев..."
+          sudo journalctl --vacuum-time=7d >/dev/null 2>&1 || true
+          if sudo k3s crictl images >/dev/null 2>&1; then
+            UNREF_IMAGES="$(sudo k3s crictl images -q --unreferenced || true)"
+            if [ -n "${UNREF_IMAGES}" ]; then sudo k3s crictl rmi ${UNREF_IMAGES} >/dev/null 2>&1 || true; fi
+          fi
           EOF
 
-      # --- 5. ТЕЛЕГРАМ УВЕДОМЛЕНИЕ О РЕЗУЛЬТАТЕ ---
       - name: Notify deploy result
         if: always()
         run: |
-          if [ "${{ job.status }}" = "success" ]; then
-            STATUS="✅ SUCCESS"
-          else
-            STATUS="❌ FAILED"
-          fi
-
+          if [ "${{ job.status }}" = "success" ]; then STATUS="✅ SUCCESS"; else STATUS="❌ FAILED"; fi
           TEXT=$(cat << EOF
           Deploy ${STATUS} — classapp
           Host: ${{ secrets.SSH_HOST }}
           Commit: ${{ github.event.workflow_run.head_sha }}
           EOF
           )
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" --data-urlencode "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" --data-urlencode "text=${TEXT}"
+          curl -s -X POST "https://telegram.org{{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            --data-urlencode "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+            --data-urlencode "text=${TEXT}"
