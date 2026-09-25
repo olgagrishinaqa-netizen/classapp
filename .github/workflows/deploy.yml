@@ -30,8 +30,16 @@ jobs:
           EOF
           chmod 600 "$HOME/.ssh/classapp_deploy_key"
 
-      # --- 1. ДИАГНОСТИЧЕСКИЙ ШАГ (FAIL-FAST) ---
-      - name: Check SSH port availability (Fail-Fast)
+      # --- 1. ДИАГНОСТИЧЕСКИЙ ШАГ (ТЕРПЕЛИВОЕ ОЖИДАНИЕ SSH) ---
+      # Нода — единственная preemptible VM, на которой одновременно поднимается
+      # весь стек (k3s+etcd+patroni+nginx+prometheus+grafana+promtail+app). После
+      # вытеснения/перезапуска платформой CPU на пару минут (иногда дольше)
+      # оказывается занят под завязку: TCP-порт 22 слушается почти сразу, но
+      # sshd не успевает получить квант CPU на banner exchange — обычный `nc -vz`
+      # это не ловит (TCP-коннект проходит), а полноценный SSH виснет. Поэтому
+      # здесь ждём не открытия порта, а реального успешного SSH-логина, и даём
+      # ноде время отдышаться вместо мгновенного fail-fast.
+      - name: Wait for SSH to become responsive
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
         run: |
@@ -40,14 +48,19 @@ jobs:
             echo "❌ Error: SSH_HOST secret is empty. Check your GitHub Repository Secrets."
             exit 1
           fi
-          echo "Checking TCP port 22 on configured SSH host: $SSH_HOST..."
-          if nc -vz -w 10 "$SSH_HOST" 22; then
-            echo "✅ Connection successful! Port 22 is open and reachable."
-          else
-            echo "❌ Connection failed! Target host $SSH_HOST is NOT reachable on port 22."
-            echo "👉 Please check if your VM is running and port 22 is allowed for 0.0.0.0/0 in Yandex Cloud Security Groups."
-            exit 1
-          fi
+          SSH_OPTS="-i $HOME/.ssh/classapp_deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 -o BatchMode=yes"
+          echo "Waiting for a real SSH login on $SSH_HOST (up to ~10 minutes, node may still be booting after preemptible restart)..."
+          for attempt in $(seq 1 30); do
+            if ssh $SSH_OPTS ubuntu@"$SSH_HOST" "true" 2>/dev/null; then
+              echo "✅ SSH is responsive (attempt $attempt)."
+              exit 0
+            fi
+            echo "⏳ Attempt $attempt/30 failed, node likely still starting up. Retrying in 20s..."
+            sleep 20
+          done
+          echo "❌ SSH did not become responsive after ~10 minutes."
+          echo "👉 Check if the VM is RUNNING (yc compute instance get) and whether it's stuck under CPU load after a preemptible restart."
+          exit 1
 
       # --- 2. БЕЗОПАСНАЯ ПОДГОТОВКА ДИРЕКТОРИЙ (Chmod 755) ---
       - name: Prepare server directories and secure log folders
