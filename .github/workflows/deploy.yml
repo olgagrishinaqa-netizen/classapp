@@ -36,7 +36,7 @@ jobs:
             echo "❌ Error: SSH_HOST secret is empty."
             exit 1
           fi
-          SSH_OPTS="-i $HOME/.ssh/classapp_deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 -o BatchMode=yes"
+          SSH_OPTS="-i $HOME/.ssh/classapp_deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o BatchMode=yes -o ServerAliveInterval=2 -o ServerAliveCountMax=3 -o TCPKeepAlive=yes"
           echo "Waiting for real SSH login on $SSH_HOST..."
           for attempt in $(seq 1 30); do
             if ssh $SSH_OPTS ubuntu@"$SSH_HOST" "true" 2>/dev/null; then
