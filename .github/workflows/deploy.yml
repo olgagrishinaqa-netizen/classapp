@@ -61,6 +61,16 @@ jobs:
           chmod 600 "$HOME/.ssh/config"
           echo "DIAG runner egress IP: $(curl -s --max-time 5 https://ifconfig.me || echo unknown)"
 
+      - name: DIAG probe ports from runner
+        run: |
+          for p in 22 80 443 2222 3000 30080 30300 30900; do
+            printf 'port %-6s ' "$p"
+            timeout 8 bash -c "exec 3<>/dev/tcp/$SSH_HOST/$p" 2>&1 && echo "OPEN" || echo "closed/refused/timeout (exit $?)"
+          done
+          echo "--- traceroute ---"
+          (command -v traceroute >/dev/null || sudo apt-get install -y -qq traceroute >/dev/null 2>&1)
+          timeout 60 traceroute -n -T -p 22 -w 2 -m 20 "$SSH_HOST" 2>&1 | tail -22 || true
+
       - name: Wait for SSH to become responsive
         run: |
           set -uo pipefail
