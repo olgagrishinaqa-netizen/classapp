@@ -34,14 +34,18 @@ fi
 rm -f "$PATRONI_APPLY_ERR"
 
 echo "ШАГ 3: ожидание master endpoint Patroni"
-for i in $(seq 1 45); do
+# Холодный старт на слабой ноде (загрузка образа, инициализация Postgres) занимает минуты.
+for i in $(seq 1 225); do
   EP="$($KUBE get endpoints classapp-db-master -n default -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || true)"
   [ -n "$EP" ] && { echo "classapp-db-master: $EP"; break; }
-  if [ "$i" -eq 45 ]; then
-    echo "classapp-db-master не получил endpoint"
+  if [ "$i" -eq 225 ]; then
+    echo "classapp-db-master не получил endpoint за 15 минут"
     $KUBE get pods -l app.kubernetes.io/name=patroni -n default || true
+    $KUBE describe pods -l app.kubernetes.io/name=patroni -n default | tail -40 || true
+    $KUBE logs classapp-patroni-0 --all-containers=true --tail=60 -n default || true
     exit 1
   fi
+  [ $((i % 15)) -eq 0 ] && $KUBE get pods -l app.kubernetes.io/name=patroni -n default || true
   sleep 4
 done
 
@@ -67,7 +71,9 @@ $KUBE create secret generic classapp-secrets -n default "${SECRET_ARGS[@]}" --dr
 echo "ШАГ 5: миграции Alembic"
 $KUBE delete job classapp-migrate -n default --ignore-not-found=true
 sed "s#ghcr.io/${IMAGE_REPO}:latest#${K8S_IMAGE}#g" "$K8S_DIR/migrate-job.yaml" | $KUBE apply -f -
-if ! $KUBE wait --for=condition=complete job/classapp-migrate -n default --timeout=300s; then
+if ! $KUBE wait --for=condition=complete job/classapp-migrate -n default --timeout=600s; then
+  $KUBE get pods -l job-name=classapp-migrate -n default -o wide || true
+  $KUBE describe pods -l job-name=classapp-migrate -n default | tail -30 || true
   $KUBE logs job/classapp-migrate --all-containers=true -n default || true
   exit 1
 fi

@@ -50,7 +50,7 @@ jobs:
             UserKnownHostsFile /dev/null
             IPQoS none
             ConnectTimeout 20
-            ConnectionAttempts 3
+            ConnectionAttempts 1
             ServerAliveInterval 10
             ServerAliveCountMax 6
             TCPKeepAlive yes
@@ -79,14 +79,14 @@ jobs:
       - name: Wait for SSH to become responsive
         run: |
           set -uo pipefail
-          for attempt in $(seq 1 30); do
+          for attempt in $(seq 1 10); do
             if ssh -v prod true >/tmp/ssh_attempt.log 2>&1; then
               echo "✅ SSH is responsive (attempt $attempt)."
               exit 0
             fi
-            echo "⏳ Attempt $attempt/30 failed. Last ssh output:"
+            echo "⏳ Attempt $attempt/10 failed. Last ssh output:"
             grep -vE "^debug1: (Reading|Applying|identity|Local|Authenticating|/etc)" /tmp/ssh_attempt.log | tail -5 | sed 's/^/    /'
-            sleep 15
+            sleep 60
           done
           echo "❌ SSH did not become responsive."
           exit 1
