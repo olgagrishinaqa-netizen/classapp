@@ -105,10 +105,14 @@ spec:
         # Смонтированный PVC создаётся kubelet'ом от root, а postgres в
         # образе Spilo работает под uid=101(postgres):gid=103(postgres) —
         # без явного chown процесс не может ни создать, ни прочитать
-        # PGDATA на этом томе.
+        # PGDATA на этом томе. Важно ЗАРАНЕЕ создать сам каталог PGDATA:
+        # стартовый (root) скрипт Spilo сам создаёт его при первом запуске
+        # с правами 0700 root:root, и на этом моменте initContainer уже
+        # не успевает вмешаться (он выполняется только один раз, до старта
+        # основного контейнера, а не при каждом его рестарте).
         - name: fix-data-dir-perms
           image: busybox:1.36
-          command: ["sh", "-c", "chown -R 101:103 /data"]
+          command: ["sh", "-c", "mkdir -p /data/pgroot/data && chown -R 101:103 /data"]
           volumeMounts:
             - name: patroni-data
               mountPath: /data
