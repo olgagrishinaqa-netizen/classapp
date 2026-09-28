@@ -47,9 +47,9 @@ class ExpenseForm(FlaskForm):
 
 
 class PaymentForm(FlaskForm):
-    """Фиксация взноса родителя; choices для user_id заполняются во view."""
+    """Фиксация взноса от ученика; choices для student_id заполняются во view."""
 
-    user_id = SelectField("Плательщик", coerce=int, validators=[DataRequired()])
+    student_id = SelectField("От кого", coerce=int, validators=[DataRequired()])
     amount = DecimalField(
         "Сумма взноса",
         validators=[DataRequired(), NumberRange(min=Decimal("0.01"))],

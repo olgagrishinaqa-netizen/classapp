@@ -1,7 +1,7 @@
 from sqlalchemy import inspect
 
 from app import create_app
-from app.models import Expense, ExpenseReport, News, Payment, Task, User
+from app.models import Expense, ExpenseReport, News, Payment, Student, Task, User
 
 
 def test_login_accepts_common_phone_formats(client):
@@ -52,14 +52,13 @@ def test_mobile_pages_render_and_use_server_forms(client, db):
 
 def test_admin_can_record_payment_and_expense(client, db):
     client.post("/login", data={"username": "79990000000", "password": "admin123"})
-    parent = User(full_name="Плательщик", phone="79991234562", role="parent")
-    parent.set_password("secure-pass")
-    db.session.add(parent)
+    student = Student(last_name="Взносов", first_name="Стёпа")
+    db.session.add(student)
     db.session.commit()
 
     payment = client.post(
         "/expenses",
-        data={"action": "add_payment", "user_id": parent.id, "amount": "1000.00"},
+        data={"action": "add_payment", "student_id": student.id, "amount": "1000.00"},
         follow_redirects=False,
     )
     expense = client.post(
@@ -70,7 +69,7 @@ def test_admin_can_record_payment_and_expense(client, db):
 
     assert payment.status_code == 302
     assert expense.status_code == 302
-    assert float(Payment.query.filter_by(user_id=parent.id).one().amount) == 1000
+    assert float(Payment.query.filter_by(student_id=student.id).one().amount) == 1000
     assert float(Expense.query.filter_by(title="Тетради").one().amount) == 350
     page = client.get("/expenses")
     expected_balance = sum(float(item.amount) for item in Payment.query.all()) - sum(
@@ -79,18 +78,36 @@ def test_admin_can_record_payment_and_expense(client, db):
     assert f"{expected_balance:.2f}".encode() in page.data
 
 
+def test_payment_form_lists_class_roster_and_shows_payer_name(client, db):
+    client.post("/login", data={"username": "79990000000", "password": "admin123"})
+    student = Student(last_name="Ромашкин", first_name="Гриша")
+    db.session.add(student)
+    db.session.commit()
+
+    create = client.post(
+        "/expenses",
+        data={"action": "add_payment", "student_id": student.id, "amount": "500.00"},
+        follow_redirects=False,
+    )
+    assert create.status_code == 302
+
+    page = client.get("/expenses")
+    assert "Ромашкин Гриша".encode() in page.data
+
+
 def test_finance_records_can_be_edited_only_by_an_administrator(client, db):
     client.post("/login", data={"username": "79990000000", "password": "admin123"})
     parent = User(full_name="Родитель взноса", phone="79991234563", role="parent")
     parent.set_password("secure-pass")
-    payment = Payment(user=parent, amount=100)
+    student = Student(last_name="Взносов", first_name="Егор")
+    payment = Payment(student=student, amount=100)
     expense = Expense(title="Старое название", amount=30, category="Общие")
-    db.session.add_all([parent, payment, expense])
+    db.session.add_all([parent, student, payment, expense])
     db.session.commit()
 
     edit_payment = client.post(
         f"/payments/edit/{payment.id}",
-        data={"user_id": parent.id, "amount": "150.00"},
+        data={"student_id": student.id, "amount": "150.00"},
         follow_redirects=False,
     )
     edit_expense = client.post(

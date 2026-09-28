@@ -726,20 +726,22 @@ def expenses_page():
 
     expense_form = ExpenseForm()
     payment_form = PaymentForm()
-    parents = User.query.filter_by(role="parent").order_by(User.full_name).all()
-    payment_form.user_id.choices = [(parent.id, parent.full_name) for parent in parents]
+    students = Student.query.order_by(Student.last_name, Student.first_name).all()
+    payment_form.student_id.choices = [(student.id, student.full_name) for student in students]
     can_manage = user.is_admin
 
     if request.method == "POST":
         if not can_manage:
             flash("Добавлять взносы и расходы может только администратор.", "error")
         elif request.form.get("action") == "add_payment":
-            if payment_form.validate_on_submit():
-                payer = db.session.get(User, payment_form.user_id.data)
-                if not payer or payer.role != "parent":
-                    flash("Выберите зарегистрированного родителя.", "error")
+            if not students:
+                flash("Сначала добавьте учеников в состав класса.", "error")
+            elif payment_form.validate_on_submit():
+                payer = db.session.get(Student, payment_form.student_id.data)
+                if not payer:
+                    flash("Выберите ученика из состава класса.", "error")
                 else:
-                    db.session.add(Payment(user_id=payer.id, amount=payment_form.amount.data))
+                    db.session.add(Payment(student_id=payer.id, amount=payment_form.amount.data))
                     db.session.commit()
                     flash("Взнос успешно зафиксирован.", "success")
                     return redirect(url_for("main.expenses_page"))
@@ -787,7 +789,6 @@ def expenses_page():
         payment_form=payment_form,
         expenses=Expense.query.order_by(Expense.created_at.desc()).all(),
         payments=Payment.query.order_by(Payment.created_at.desc()).all(),
-        parents=parents,
         total_deposited=total_deposited,
         total_spent=total_spent,
         total_expenses=total_spent,
@@ -850,15 +851,15 @@ def edit_payment_page(payment_id):
         flash("Взнос не найден.", "error")
         return redirect(url_for("main.expenses_page"))
 
-    parents = User.query.filter_by(role="parent").order_by(User.full_name).all()
+    students = Student.query.order_by(Student.last_name, Student.first_name).all()
     form = PaymentForm(obj=payment)
-    form.user_id.choices = [(parent.id, parent.full_name) for parent in parents]
+    form.student_id.choices = [(student.id, student.full_name) for student in students]
     if form.validate_on_submit():
-        payer = db.session.get(User, form.user_id.data)
-        if not payer or payer.role != "parent":
-            form.user_id.errors.append("Выберите зарегистрированного родителя.")
+        payer = db.session.get(Student, form.student_id.data)
+        if not payer:
+            form.student_id.errors.append("Выберите ученика из состава класса.")
         else:
-            payment.user_id = payer.id
+            payment.student_id = payer.id
             payment.amount = form.amount.data
             db.session.commit()
             flash("Взнос обновлен.", "success")

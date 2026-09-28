@@ -78,16 +78,29 @@ class ExpenseReport(db.Model):
 
 
 class Payment(db.Model):
-    """Взнос родителя в бюджет класса."""
+    """Взнос в бюджет класса от конкретного ученика."""
 
     __tablename__ = "payment"
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    # user_id — устаревшее поле (взносы раньше привязывались к учётной записи
+    # родителя); оставлено nullable для старых записей, новые взносы его не
+    # заполняют и привязываются к ученику через student_id.
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    student_id = db.Column(db.Integer, db.ForeignKey("students.id"), nullable=True, index=True)
     amount = db.Column(db.Numeric(10, 2), nullable=False)
     created_at = db.Column(db.DateTime, default=local_now, nullable=False)
 
     user = db.relationship("User", backref=db.backref("payments", lazy=True))
+    student = db.relationship("Student", backref=db.backref("payments", lazy=True))
+
+    @property
+    def payer_name(self):
+        if self.student:
+            return self.student.full_name
+        if self.user:
+            return self.user.full_name
+        return "—"
 
 
 class Expense(db.Model):
