@@ -27,10 +27,12 @@ spec:
       initContainers:
         - name: fix-log-dir-perms
           image: busybox:1.36
-          command: ["sh", "-c", "chown -R 1000:1000 /var/log/classapp"]
+          command: ["sh", "-c", "chown -R 1000:1000 /var/log/classapp /uploads"]
           volumeMounts:
             - name: classapp-logs
               mountPath: /var/log/classapp
+            - name: classapp-uploads
+              mountPath: /uploads
       containers:
         - name: classapp-web
           image: ghcr.io/olgagrishinaqa-netizen/classapp:latest
@@ -72,6 +74,8 @@ spec:
                   key: secret-key
             - name: APP_JSON_LOG_PATH
               value: /var/log/classapp/app.json.log
+            - name: UPLOAD_FOLDER
+              value: /uploads
           ports:
             - name: http
               containerPort: 8000
@@ -86,6 +90,14 @@ spec:
           volumeMounts:
             - name: classapp-logs
               mountPath: /var/log/classapp
+            - name: classapp-uploads
+              mountPath: /uploads
+            # Форма /expenses сохраняет чеки по захардкоженному в коде пути
+            # app.root_path/static/uploads (а не через UPLOAD_FOLDER) —
+            # монтируем тот же постоянный том и туда, чтобы обе точки загрузки
+            # писали на один и тот же диск на хосте.
+            - name: classapp-uploads
+              mountPath: /app/app/static/uploads
           readinessProbe:
             httpGet:
               path: /healthz
@@ -106,6 +118,10 @@ spec:
         - name: classapp-logs
           hostPath:
             path: /var/log/classapp
+            type: DirectoryOrCreate
+        - name: classapp-uploads
+          hostPath:
+            path: /var/lib/classapp/uploads
             type: DirectoryOrCreate
 ---
 apiVersion: v1

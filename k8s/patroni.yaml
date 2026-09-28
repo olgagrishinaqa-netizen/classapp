@@ -101,6 +101,17 @@ spec:
       - key: node-role.kubernetes.io/master
         operator: Exists
         effect: NoSchedule
+      initContainers:
+        # Смонтированный PVC создаётся kubelet'ом от root, а postgres в
+        # образе Spilo работает под uid=101(postgres):gid=103(postgres) —
+        # без явного chown процесс не может ни создать, ни прочитать
+        # PGDATA на этом томе.
+        - name: fix-data-dir-perms
+          image: busybox:1.36
+          command: ["sh", "-c", "chown -R 101:103 /data"]
+          volumeMounts:
+            - name: patroni-data
+              mountPath: /data
       containers:
         - name: patroni
           # ВАЖНО: используем тот же образ Zalando Spilo, что уже стабильно
@@ -121,8 +132,14 @@ spec:
               value: service
             - name: ETCD_HOSTS
               value: etcd-service:2379
-            - name: PATRONI_POSTGRESQL_DATA_DIR
-              value: /data/patroni
+            # ВАЖНО: образ Spilo игнорирует PATRONI_POSTGRESQL_DATA_DIR (это
+            # переменная ванильного Patroni) и всегда пишет в свой собственный
+            # путь по умолчанию /home/postgres/pgdata/pgroot/data — вне
+            # смонтированного тома, то есть данные жили только во writable-слое
+            # контейнера и терялись при каждом пересоздании пода. Spilo читает
+            # именно PGDATA, и он должен указывать внутрь смонтированного /data.
+            - name: PGDATA
+              value: /data/pgroot/data
             - name: PATRONI_SUPERUSER_PASSWORD
               valueFrom:
                 secretKeyRef:
