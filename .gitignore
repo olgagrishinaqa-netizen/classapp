@@ -26,3 +26,7 @@ reports/
 .pytest_cache/
 htmlcov/
 .coverage
+
+# Файлы, загружаемые через UPLOAD_FOLDER при локальном запуске/тестах
+# (в проде это отдельный постоянный volume, а не часть репозитория).
+/uploads/*

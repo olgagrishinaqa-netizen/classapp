@@ -290,16 +290,32 @@ def news_page():
         if not can_manage:
             flash("Публиковать новости может только администратор.", "error")
         else:
-            db.session.add(
-                News(
-                    title=form.title.data.strip(),
-                    description=form.description.data.strip(),
-                    status=form.status.data,
+            image_name = None
+            image_path = None
+            image = form.image.data
+            if image and image.filename:
+                upload_folder = current_app.config.get("UPLOAD_FOLDER", os.path.join(os.getcwd(), "uploads"))
+                image_path, image_error = _save_uploaded_file(
+                    image,
+                    allowed_extensions=ALLOWED_IMAGE_EXTENSIONS,
+                    destination_folder=upload_folder,
+                    field_error_message="Допустимы JPG, PNG или WEBP.",
                 )
-            )
-            db.session.commit()
-            flash("Новость сохранена.", "success")
-            return redirect(url_for("main.news_page"))
+                if image_error:
+                    form.image.errors.append(image_error)
+            if not form.image.errors:
+                db.session.add(
+                    News(
+                        title=form.title.data.strip(),
+                        description=form.description.data.strip(),
+                        status=form.status.data,
+                        image_name=(secure_filename(image.filename) if image and image.filename else None),
+                        image_path=image_path,
+                    )
+                )
+                db.session.commit()
+                flash("Новость сохранена.", "success")
+                return redirect(url_for("main.news_page"))
 
     query = News.query.order_by(News.created_at.desc())
     if not can_manage:
@@ -347,12 +363,28 @@ def edit_news_page(news_id):
         return redirect(url_for("main.news_page"))
     form = NewsForm(obj=news_item)
     if form.validate_on_submit():
-        news_item.title = form.title.data.strip()
-        news_item.description = form.description.data.strip()
-        news_item.status = form.status.data
-        db.session.commit()
-        flash("Новость обновлена.", "success")
-        return redirect(url_for("main.news_page"))
+        image = form.image.data
+        image_path = None
+        if image and image.filename:
+            upload_folder = current_app.config.get("UPLOAD_FOLDER", os.path.join(os.getcwd(), "uploads"))
+            image_path, image_error = _save_uploaded_file(
+                image,
+                allowed_extensions=ALLOWED_IMAGE_EXTENSIONS,
+                destination_folder=upload_folder,
+                field_error_message="Допустимы JPG, PNG или WEBP.",
+            )
+            if image_error:
+                form.image.errors.append(image_error)
+        if not form.image.errors:
+            news_item.title = form.title.data.strip()
+            news_item.description = form.description.data.strip()
+            news_item.status = form.status.data
+            if image_path:
+                news_item.image_name = secure_filename(image.filename)
+                news_item.image_path = image_path
+            db.session.commit()
+            flash("Новость обновлена.", "success")
+            return redirect(url_for("main.news_page"))
     return render_template(
         "news_edit.html",
         user=user,

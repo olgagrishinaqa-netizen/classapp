@@ -63,6 +63,10 @@ class NewsForm(FlaskForm):
 
     title = StringField("Заголовок", validators=[DataRequired(), Length(max=200)])
     description = TextAreaField("Текст новости", validators=[DataRequired()])
+    image = FileField(
+        "Изображение",
+        validators=[FileAllowed(["jpg", "jpeg", "png", "webp"], "Допустимы JPG, PNG или WEBP.")],
+    )
     status = SelectField(
         "Статус",
         choices=[("published", "Опубликовать"), ("draft", "Сохранить как черновик")],
