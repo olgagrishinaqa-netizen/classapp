@@ -60,7 +60,11 @@ metadata:
     app.kubernetes.io/name: classapp-nginx
     app.kubernetes.io/part-of: classapp
 spec:
-  replicas: 2
+  # 1 реплика: контейнер занимает порт 80 самого хоста (hostPort) напрямую,
+  # чтобы сайт открывался по обычному адресу без порта — а хост у нас один
+  # (единственная нода кластера), и два пода не могут забронировать один и
+  # тот же порт 80 хоста одновременно.
+  replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: classapp-nginx
@@ -84,6 +88,10 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+              protocol: TCP
+            - name: http-host
+              containerPort: 8080
+              hostPort: 80
               protocol: TCP
           resources:
             requests:
