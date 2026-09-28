@@ -30,6 +30,7 @@ grafana:
       cpu: 50m
       memory: 128Mi
     limits:
+      cpu: 200m
       memory: 256Mi
 
 prometheus:
@@ -47,6 +48,7 @@ prometheus:
         cpu: 100m
         memory: 400Mi
       limits:
+        cpu: 400m
         memory: 768Mi
 
 prometheusOperator:
@@ -55,6 +57,7 @@ prometheusOperator:
       cpu: 25m
       memory: 64Mi
     limits:
+      cpu: 100m
       memory: 128Mi
 
 nodeExporter:
@@ -64,9 +67,15 @@ kubeStateMetrics:
 
 prometheus-node-exporter:
   resources:
+    requests:
+      cpu: 10m
     limits:
+      cpu: 50m
       memory: 50Mi
 kube-state-metrics:
   resources:
+    requests:
+      cpu: 10m
     limits:
+      cpu: 100m
       memory: 100Mi

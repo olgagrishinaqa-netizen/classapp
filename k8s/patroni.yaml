@@ -181,8 +181,10 @@ spec:
             failureThreshold: 6
           resources:
             requests:
+              cpu: 100m
               memory: 128Mi
             limits:
+              cpu: 400m
               memory: 256Mi
         - name: role-labeler
           image: bitnamilegacy/kubectl:1.30.3
@@ -219,8 +221,10 @@ spec:
               done
           resources:
             requests:
+              cpu: 10m
               memory: 16Mi
             limits:
+              cpu: 50m
               memory: 32Mi
   volumeClaimTemplates:
     - metadata:
