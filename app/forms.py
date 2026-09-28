@@ -71,6 +71,21 @@ class NewsForm(FlaskForm):
     submit = SubmitField("Опубликовать новость")
 
 
+class TaskForm(FlaskForm):
+    """Создание задачи класса."""
+
+    title = StringField(
+        "Название",
+        validators=[
+            DataRequired(message="Пожалуйста, укажите название задачи."),
+            Length(max=180, message="Название не должно превышать 180 символов."),
+        ],
+    )
+    description = TextAreaField("Описание", validators=[Optional()])
+    deadline = DateField("Дедлайн", validators=[Optional()], format="%Y-%m-%d")
+    submit = SubmitField("Создать задачу")
+
+
 class RoleForm(FlaskForm):
     """Переключение активной роли интерфейса (parent/admin) на /profile."""
 

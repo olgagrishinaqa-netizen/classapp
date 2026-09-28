@@ -128,6 +128,7 @@ class Task(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(180), nullable=False)
     description = db.Column(db.Text, default="")
+    deadline = db.Column(db.Date, nullable=True)
     status = db.Column(db.String(20), nullable=False, default="created")
     created_at = db.Column(db.DateTime, default=local_now, nullable=False)
 

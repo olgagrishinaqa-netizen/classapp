@@ -32,6 +32,7 @@ from .forms import (
     RegisterForm,
     RoleForm,
     StudentForm,
+    TaskForm,
     UserManagementForm,
     UserRoleForm,
 )
@@ -162,7 +163,15 @@ def user_json(user):
 
 def task_json(task):
     """Сериализация Task для JSON API."""
-    return {"id": task.id, "title": task.title, "description": task.description or "", "status": task.status, "status_label": STATUS_LABELS[task.status], "created_at": task.created_at.strftime("%d.%m.%Y")}
+    return {
+        "id": task.id,
+        "title": task.title,
+        "description": task.description or "",
+        "deadline": task.deadline.strftime("%Y-%m-%d") if task.deadline else None,
+        "status": task.status,
+        "status_label": STATUS_LABELS[task.status],
+        "created_at": task.created_at.strftime("%d.%m.%Y"),
+    }
 
 
 def news_json(news):
@@ -686,16 +695,39 @@ def change_role():
     return redirect(url_for("main.profile_page"))
 
 
-@bp.get("/tasks")
+@bp.route("/tasks", methods=["GET", "POST"])
 def tasks_page():
     user = current_user()
     if not user:
         return redirect(url_for("main.login_page"))
+
+    form = TaskForm()
+    if request.method == "POST":
+        if not user.is_admin:
+            flash("Создавать задачи может только администратор.", "error")
+            return redirect(url_for("main.tasks_page"))
+        if form.validate_on_submit():
+            db.session.add(
+                Task(
+                    title=form.title.data.strip(),
+                    description=(form.description.data or "").strip(),
+                    deadline=form.deadline.data,
+                )
+            )
+            db.session.commit()
+            flash("Задача создана.", "success")
+            return redirect(url_for("main.tasks_page"))
+        else:
+            flash("Проверьте правильность заполнения формы.", "error")
+
     active_tasks = Task.query.filter(Task.status != "done").order_by(Task.created_at.desc()).all()
     completed_tasks = Task.query.filter(Task.status == "done").order_by(Task.created_at.desc()).all()
     return render_template(
         "tasks.html",
         user=user,
+        current_user=user,
+        form=form,
+        now_date=datetime.now().date(),
         active_tasks=active_tasks,
         completed_tasks=completed_tasks,
     )
@@ -1068,7 +1100,18 @@ def create_task():
     data = request.get_json(silent=True) or {}
     if not (data.get("title") or "").strip():
         return jsonify(error="Укажите название задачи"), 400
-    task = Task(title=data["title"].strip(), description=(data.get("description") or "").strip())
+    deadline = None
+    raw_deadline = (data.get("deadline") or "").strip()
+    if raw_deadline:
+        try:
+            deadline = datetime.strptime(raw_deadline, "%Y-%m-%d").date()
+        except ValueError:
+            return jsonify(error="Некорректный формат дедлайна, ожидается ГГГГ-ММ-ДД"), 400
+    task = Task(
+        title=data["title"].strip(),
+        description=(data.get("description") or "").strip(),
+        deadline=deadline,
+    )
     db.session.add(task)
     db.session.commit()
     return jsonify(task=task_json(task)), 201
