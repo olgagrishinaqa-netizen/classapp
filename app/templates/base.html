@@ -54,5 +54,65 @@
   <script>
     if (localStorage.theme === 'dark' || (!localStorage.theme && matchMedia('(prefers-color-scheme: dark)').matches)) document.documentElement.classList.add('dark');
   </script>
+
+  {#
+    Единое модальное окно подтверждения для всех форм удаления в приложении.
+    Чтобы подключить: <form class="js-confirm-delete" data-confirm-message="…">
+    вместо стандартного onsubmit="return confirm(...)".
+  #}
+  <dialog id="confirm-dialog"
+    class="m-0 w-full max-w-none rounded-t-3xl bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/50 dark:bg-slate-900 dark:text-slate-100 sm:m-auto sm:max-w-sm sm:rounded-3xl"
+    style="position:fixed; left:0; right:0; bottom:0; top:auto;">
+    <div class="p-6">
+      <div class="flex items-center gap-3">
+        <span aria-hidden="true" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-100 text-xl text-red-600 dark:bg-red-950 dark:text-red-300">!</span>
+        <h2 class="text-lg font-bold text-slate-900 dark:text-slate-100">Подтвердите действие</h2>
+      </div>
+      <p id="confirm-dialog-message" class="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300"></p>
+      <div class="mt-6 grid grid-cols-2 gap-3">
+        <button type="button" id="confirm-dialog-cancel"
+          class="min-h-12 rounded-xl border border-slate-200 text-sm font-bold text-slate-700 dark:border-slate-700 dark:text-slate-200">
+          Отмена
+        </button>
+        <button type="button" id="confirm-dialog-accept"
+          class="min-h-12 rounded-xl bg-red-600 text-sm font-bold text-white shadow-lg shadow-red-900/20">
+          Удалить
+        </button>
+      </div>
+    </div>
+  </dialog>
+  <script>
+    (function () {
+      var dialog = document.getElementById('confirm-dialog');
+      var messageEl = document.getElementById('confirm-dialog-message');
+      var acceptBtn = document.getElementById('confirm-dialog-accept');
+      var cancelBtn = document.getElementById('confirm-dialog-cancel');
+      var pendingForm = null;
+
+      document.addEventListener('submit', function (event) {
+        var form = event.target;
+        if (!(form instanceof HTMLFormElement) || !form.classList.contains('js-confirm-delete')) return;
+        if (form.dataset.confirmed === 'true') return;
+        event.preventDefault();
+        pendingForm = form;
+        messageEl.textContent = form.dataset.confirmMessage || 'Вы уверены, что хотите продолжить?';
+        dialog.showModal();
+      });
+
+      acceptBtn.addEventListener('click', function () {
+        if (!pendingForm) return;
+        var form = pendingForm;
+        pendingForm = null;
+        form.dataset.confirmed = 'true';
+        dialog.close();
+        form.requestSubmit();
+      });
+
+      cancelBtn.addEventListener('click', function () {
+        pendingForm = null;
+        dialog.close();
+      });
+    })();
+  </script>
 </body>
 </html>

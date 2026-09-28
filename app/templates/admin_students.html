@@ -46,9 +46,9 @@
           data-birth-date="{{ student.birth_date.strftime('%Y-%m-%d') if student.birth_date else '' }}">
           Редактировать
         </button>
-        <form method="post"
-          action="{{ url_for('main.delete_student_page', student_id=student.id) }}{% if search_query %}?search={{ search_query|urlencode }}{% endif %}"
-          onsubmit="return confirm('Удалить ученика «{{ student.full_name }}» из состава класса?');">
+        <form method="post" class="js-confirm-delete"
+          data-confirm-message="Удалить ученика «{{ student.full_name }}» из состава класса?"
+          action="{{ url_for('main.delete_student_page', student_id=student.id) }}{% if search_query %}?search={{ search_query|urlencode }}{% endif %}">
           <button type="submit" class="min-h-12 w-full rounded-xl bg-red-50 text-sm font-bold text-red-700 dark:bg-red-950 dark:text-red-300">
             Удалить
           </button>
