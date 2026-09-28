@@ -572,6 +572,87 @@ def admin_students_page():
     )
 
 
+def _students_page_redirect():
+    search_query = (request.args.get("search") or request.form.get("search") or "").strip()
+    if search_query:
+        return redirect(url_for("main.admin_students_page", search=search_query))
+    return redirect(url_for("main.admin_students_page"))
+
+
+@bp.post("/admin/students/<int:student_id>/edit")
+@login_required_page
+def edit_student_page(student_id):
+    user, active_role = page_user()
+    if getattr(user, "role", None) != "admin":
+        flash("Редактировать состав класса может только администратор.", "error")
+        return redirect(url_for("main.index"))
+
+    student = db.session.get(Student, student_id)
+    if not student:
+        flash("Ученик не найден.", "error")
+        return _students_page_redirect()
+
+    form = StudentForm()
+    if form.validate_on_submit():
+        student.last_name = form.last_name.data.strip()
+        student.first_name = form.first_name.data.strip()
+        student.birth_date = form.birth_date.data
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            flash(
+                f"Ученик «{form.last_name.data.strip()} {form.first_name.data.strip()}» "
+                "уже есть в списке класса.",
+                "error",
+            )
+        else:
+            current_app.logger.info(
+                "student_updated",
+                extra={
+                    "event": "student_updated",
+                    "student_id": student.id,
+                    "student_full_name": student.full_name,
+                    "admin_id": user.id,
+                    "admin_full_name": user.full_name,
+                },
+            )
+            flash(f"Данные ученика «{student.full_name}» обновлены.", "success")
+    else:
+        flash("Проверьте правильность заполнения формы.", "error")
+    return _students_page_redirect()
+
+
+@bp.post("/admin/students/<int:student_id>/delete")
+@login_required_page
+def delete_student_page(student_id):
+    user, active_role = page_user()
+    if getattr(user, "role", None) != "admin":
+        flash("Удалять учеников может только администратор.", "error")
+        return redirect(url_for("main.index"))
+
+    student = db.session.get(Student, student_id)
+    if not student:
+        flash("Ученик не найден.", "error")
+        return _students_page_redirect()
+
+    student_full_name = student.full_name
+    db.session.delete(student)
+    db.session.commit()
+    current_app.logger.info(
+        "student_deleted",
+        extra={
+            "event": "student_deleted",
+            "student_id": student_id,
+            "student_full_name": student_full_name,
+            "admin_id": user.id,
+            "admin_full_name": user.full_name,
+        },
+    )
+    flash(f"Ученик «{student_full_name}» удалён из состава класса.", "success")
+    return _students_page_redirect()
+
+
 @bp.route("/profile", methods=["GET", "POST"])
 def profile_page():
     user, active_role = page_user()

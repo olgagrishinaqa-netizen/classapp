@@ -38,6 +38,20 @@
       <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
         {% if student.birth_date %}Дата рождения: {{ student.birth_date.strftime('%d.%m.%Y') }}{% else %}Дата рождения не указана{% endif %}
       </p>
+      <div class="mt-4 grid grid-cols-2 gap-3">
+        <button type="button"
+          onclick="openEditStudentDialog({{ student.id }}, {{ student.last_name|tojson }}, {{ student.first_name|tojson }}, {{ (student.birth_date.strftime('%Y-%m-%d') if student.birth_date else '')|tojson }})"
+          class="flex min-h-12 items-center justify-center rounded-xl border border-slate-200 text-sm font-bold dark:border-slate-700">
+          Редактировать
+        </button>
+        <form method="post"
+          action="{{ url_for('main.delete_student_page', student_id=student.id) }}{% if search_query %}?search={{ search_query|urlencode }}{% endif %}"
+          onsubmit="return confirm('Удалить ученика «{{ student.full_name }}» из состава класса?');">
+          <button type="submit" class="min-h-12 w-full rounded-xl bg-red-50 text-sm font-bold text-red-700 dark:bg-red-950 dark:text-red-300">
+            Удалить
+          </button>
+        </form>
+      </div>
     </article>
     {% else %}
     <p class="rounded-3xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
@@ -79,4 +93,55 @@
     </div>
   </form>
 </dialog>
+
+<dialog id="edit-student-dialog"
+  class="m-0 w-full max-w-none rounded-t-3xl bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/50 dark:bg-slate-900 dark:text-slate-100 sm:m-auto sm:max-w-md sm:rounded-3xl"
+  style="position:fixed; left:0; right:0; bottom:0; top:auto;">
+  <form id="edit-student-form" method="post" action="" class="p-6">
+    {{ form.csrf_token }}
+    <div class="mb-5 flex items-center justify-between">
+      <h2 class="text-xl font-bold">Редактировать ученика</h2>
+      <button type="button" onclick="document.getElementById('edit-student-dialog').close()"
+        class="flex min-h-12 min-w-12 items-center justify-center text-2xl text-slate-500" aria-label="Закрыть">&times;</button>
+    </div>
+    <div class="space-y-4">
+      <div>
+        <label class="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-300">Фамилия</label>
+        <input type="text" name="last_name" id="edit-student-last-name" required maxlength="64"
+          class="min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-base dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+      </div>
+      <div>
+        <label class="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-300">Имя</label>
+        <input type="text" name="first_name" id="edit-student-first-name" required maxlength="64"
+          class="min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-base dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+      </div>
+      <div>
+        <label class="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-300">Дата рождения</label>
+        <input type="date" name="birth_date" id="edit-student-birth-date"
+          class="min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-base dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+      </div>
+    </div>
+    <div class="mt-6">
+      <button type="submit" class="min-h-12 w-full rounded-2xl bg-emerald-700 px-5 text-base font-bold text-white shadow-lg shadow-emerald-900/20">
+        Сохранить
+      </button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+  function openEditStudentDialog(studentId, lastName, firstName, birthDate) {
+    const form = document.getElementById('edit-student-form');
+    const searchParam = {{ (search_query|urlencode if search_query else '')|tojson }};
+    let action = "{{ url_for('main.edit_student_page', student_id=0) }}".replace('/0/edit', '/' + studentId + '/edit');
+    if (searchParam) {
+      action += '?search=' + searchParam;
+    }
+    form.action = action;
+    document.getElementById('edit-student-last-name').value = lastName;
+    document.getElementById('edit-student-first-name').value = firstName;
+    document.getElementById('edit-student-birth-date').value = birthDate;
+    document.getElementById('edit-student-dialog').showModal();
+  }
+</script>
 {% endblock %}
