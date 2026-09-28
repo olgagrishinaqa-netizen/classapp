@@ -39,9 +39,11 @@
         {% if student.birth_date %}Дата рождения: {{ student.birth_date.strftime('%d.%m.%Y') }}{% else %}Дата рождения не указана{% endif %}
       </p>
       <div class="mt-4 grid grid-cols-2 gap-3">
-        <button type="button"
-          onclick="openEditStudentDialog({{ student.id }}, {{ student.last_name|tojson }}, {{ student.first_name|tojson }}, {{ (student.birth_date.strftime('%Y-%m-%d') if student.birth_date else '')|tojson }})"
-          class="flex min-h-12 items-center justify-center rounded-xl border border-slate-200 text-sm font-bold dark:border-slate-700">
+        <button type="button" class="edit-student-btn flex min-h-12 items-center justify-center rounded-xl border border-slate-200 text-sm font-bold dark:border-slate-700"
+          data-student-id="{{ student.id }}"
+          data-last-name="{{ student.last_name }}"
+          data-first-name="{{ student.first_name }}"
+          data-birth-date="{{ student.birth_date.strftime('%Y-%m-%d') if student.birth_date else '' }}">
           Редактировать
         </button>
         <form method="post"
@@ -143,5 +145,16 @@
     document.getElementById('edit-student-birth-date').value = birthDate;
     document.getElementById('edit-student-dialog').showModal();
   }
+
+  document.querySelectorAll('.edit-student-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      openEditStudentDialog(
+        btn.dataset.studentId,
+        btn.dataset.lastName,
+        btn.dataset.firstName,
+        btn.dataset.birthDate
+      );
+    });
+  });
 </script>
 {% endblock %}
