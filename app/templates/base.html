@@ -83,7 +83,10 @@
       background-image: radial-gradient(60rem 60rem at 85% -10%, rgba(56, 189, 248, 0.12), transparent 60%), radial-gradient(50rem 50rem at -10% 110%, rgba(217, 70, 239, 0.10), transparent 60%);
     }
   </style>
-  <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" sizes="any">
+  <link rel="icon" href="{{ url_for('static', filename='brand/favicon-32.png') }}" type="image/png" sizes="32x32">
+  <link rel="icon" href="{{ url_for('static', filename='brand/favicon-192.png') }}" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='brand/favicon-180.png') }}">
   <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#05070d" media="(prefers-color-scheme: dark)">
   {% block head %}{% endblock %}
