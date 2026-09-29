@@ -1,13 +1,33 @@
 {% extends "base.html" %}
 {% block title %}Профиль | Класс{% endblock %}
 {% block content %}
-<header class="mb-6"><p class="text-sm font-semibold text-emerald-700 dark:text-emerald-300">АККАУНТ</p><h1 class="mt-1 text-3xl font-bold tracking-tight">Профиль</h1></header>
-<section class="rounded-3xl bg-white p-6 shadow-sm dark:bg-slate-900"><div class="flex items-center gap-4"><div class="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-2xl font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">{{ current_user.full_name[:1]|upper }}</div><div><h2 class="text-xl font-bold">{{ current_user.full_name }}</h2><p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ current_user.phone }}</p></div></div><dl class="mt-6 space-y-3 border-t border-slate-100 pt-5 text-sm dark:border-slate-800"><div class="flex justify-between gap-4"><dt class="text-slate-500 dark:text-slate-400">Роль аккаунта</dt><dd class="font-bold">{{ 'Администратор' if current_user.is_admin else 'Родитель' }}</dd></div><div class="flex justify-between gap-4"><dt class="text-slate-500 dark:text-slate-400">Активный режим</dt><dd class="font-bold">{{ 'Администратор' if active_role == 'admin' else 'Родитель' }}</dd></div></dl></section>
+<header class="mb-6"><p class="eyebrow-neon">Аккаунт</p><h1 class="mt-1 font-display text-2xl font-bold tracking-tight text-white">Профиль</h1></header>
+<section class="glass-panel p-6">
+  <div class="flex items-center gap-4">
+    <div class="flex h-16 w-16 items-center justify-center rounded-full border border-cyan-400/30 bg-cyan-400/10 text-2xl font-black text-cyan-300 shadow-[0_0_20px_-4px_rgba(34,211,238,0.6)]">{{ current_user.full_name[:1]|upper }}</div>
+    <div>
+      <h2 class="text-xl font-bold text-white">{{ current_user.full_name }}</h2>
+      <p class="mt-1 text-sm text-slate-400">{{ current_user.phone }}</p>
+    </div>
+  </div>
+  <dl class="mt-6 space-y-3 border-t border-white/10 pt-5 text-sm">
+    <div class="flex justify-between gap-4"><dt class="text-slate-400">Роль аккаунта</dt><dd class="font-bold text-white">{{ 'Администратор' if current_user.is_admin else 'Родитель' }}</dd></div>
+    <div class="flex justify-between gap-4"><dt class="text-slate-400">Активный режим</dt><dd class="font-bold text-white">{{ 'Администратор' if active_role == 'admin' else 'Родитель' }}</dd></div>
+  </dl>
+</section>
 {% if current_user.is_admin %}
-  <section class="mt-5 rounded-3xl border border-red-100 bg-red-50 p-5 dark:border-red-950 dark:bg-red-950/30"><h2 class="text-lg font-bold text-red-800 dark:text-red-200">Тестирование ролей</h2><p class="mt-2 text-sm text-red-700 dark:text-red-300">Меняет только отображаемый режим в текущей сессии. Права аккаунта остаются прежними.</p><form action="{{ url_for('main.change_role') }}" method="post" class="mt-4 flex gap-3">{{ form.hidden_tag() }}{{ form.role(class="min-h-12 min-w-0 flex-1 rounded-xl border border-red-200 bg-white px-3 text-base dark:border-red-900 dark:bg-slate-900") }}<button class="min-h-12 rounded-xl bg-red-600 px-4 text-sm font-bold text-white">Применить</button></form></section>
+  <section class="glass-card mt-5 border-rose-500/20 bg-rose-500/5 p-5">
+    <h2 class="font-display text-lg font-bold text-rose-300">Тестирование ролей</h2>
+    <p class="mt-2 text-sm text-rose-300/80">Меняет только отображаемый режим в текущей сессии. Права аккаунта остаются прежними.</p>
+    <form action="{{ url_for('main.change_role') }}" method="post" class="mt-4 flex gap-3">
+      {{ form.hidden_tag() }}
+      {{ form.role(class="input-cyber min-w-0 flex-1 border-rose-500/30") }}
+      <button class="btn-danger bg-rose-600/90 px-4 text-white hover:bg-rose-500">Применить</button>
+    </form>
+  </section>
 {% endif %}
-<a href="{{ url_for('main.news_page') }}" class="mt-5 flex min-h-12 items-center justify-between rounded-2xl bg-white px-5 text-sm font-bold shadow-sm dark:bg-slate-900">Новости класса <span>→</span></a>
-{% if current_user.is_admin %}<a href="{{ url_for('main.users_page') }}" class="mt-3 flex min-h-12 items-center justify-between rounded-2xl bg-white px-5 text-sm font-bold shadow-sm dark:bg-slate-900">Пользователи <span>→</span></a>{% endif %}
-{% if current_user.is_admin %}<a href="{{ url_for('main.admin_students_page') }}" class="mt-3 flex min-h-12 items-center justify-between rounded-2xl bg-white px-5 text-sm font-bold shadow-sm dark:bg-slate-900">Состав класса <span>→</span></a>{% endif %}
-<form action="{{ url_for('main.logout_page') }}" method="post" class="mt-6"><button class="min-h-12 w-full rounded-xl border border-red-200 bg-white text-sm font-bold text-red-700 dark:border-red-900 dark:bg-slate-900 dark:text-red-300">Выйти из аккаунта</button></form>
+<a href="{{ url_for('main.news_page') }}" class="btn-ghost mt-5 w-full justify-between px-5">Лента событий <span>→</span></a>
+{% if current_user.is_admin %}<a href="{{ url_for('main.users_page') }}" class="btn-ghost mt-3 w-full justify-between px-5">Пользователи <span>→</span></a>{% endif %}
+{% if current_user.is_admin %}<a href="{{ url_for('main.admin_students_page') }}" class="btn-ghost mt-3 w-full justify-between px-5">Состав класса <span>→</span></a>{% endif %}
+<form action="{{ url_for('main.logout_page') }}" method="post" class="mt-6"><button class="btn-danger w-full">Выйти из аккаунта</button></form>
 {% endblock %}

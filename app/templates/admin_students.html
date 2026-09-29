@@ -15,31 +15,28 @@
 {% block content %}
 <div class="space-y-5">
   <div class="flex items-center justify-between">
-    <h1 class="text-xl font-bold">Состав класса</h1>
-    <button type="button" onclick="document.getElementById('create-student-dialog').showModal()"
-      class="flex min-h-12 min-w-12 items-center justify-center rounded-2xl bg-emerald-700 px-5 text-base font-bold text-white shadow-lg shadow-emerald-900/20">
+    <div><p class="eyebrow-neon">Хаб класса</p><h1 class="mt-1 font-display text-2xl font-bold tracking-tight text-white">Состав класса</h1></div>
+    <button type="button" onclick="document.getElementById('create-student-dialog').showModal()" class="btn-cyber">
       + Ученик
     </button>
   </div>
 
   <form method="get" action="{{ url_for('main.admin_students_page') }}" class="flex items-center gap-2">
-    <input type="text" name="search" value="{{ search_query or '' }}" placeholder="Поиск по фамилии или имени…"
-      class="min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-base dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+    <input type="text" name="search" value="{{ search_query or '' }}" placeholder="Поиск по фамилии или имени…" class="input-cyber">
     {% if search_query %}
-    <a href="{{ url_for('main.admin_students_page') }}" aria-label="Сбросить поиск"
-      class="flex min-h-12 min-w-12 items-center justify-center rounded-2xl border border-slate-200 text-2xl font-bold text-slate-500 dark:border-slate-700 dark:text-slate-400">&times;</a>
+    <a href="{{ url_for('main.admin_students_page') }}" aria-label="Сбросить поиск" class="flex min-h-12 min-w-12 items-center justify-center rounded-xl border border-white/10 text-2xl font-bold text-slate-400 hover:border-cyan-400/40 hover:text-cyan-300">&times;</a>
     {% endif %}
   </form>
 
   <div class="space-y-3">
     {% for student in students %}
-    <article class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <p class="text-lg font-bold text-slate-900 dark:text-slate-100">{{ student.full_name }}</p>
-      <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+    <article class="glass-card p-5">
+      <p class="text-lg font-bold text-white">{{ student.full_name }}</p>
+      <p class="mt-1 text-sm text-slate-400">
         {% if student.birth_date %}Дата рождения: {{ student.birth_date.strftime('%d.%m.%Y') }}{% else %}Дата рождения не указана{% endif %}
       </p>
       <div class="mt-4 grid grid-cols-2 gap-3">
-        <button type="button" class="edit-student-btn flex min-h-12 items-center justify-center rounded-xl border border-slate-200 text-sm font-bold dark:border-slate-700"
+        <button type="button" class="edit-student-btn btn-ghost"
           data-student-id="{{ student.id }}"
           data-last-name="{{ student.last_name }}"
           data-first-name="{{ student.first_name }}"
@@ -49,14 +46,14 @@
         <form method="post" class="js-confirm-delete"
           data-confirm-message="Удалить ученика «{{ student.full_name }}» из состава класса?"
           action="{{ url_for('main.delete_student_page', student_id=student.id) }}{% if search_query %}?search={{ search_query|urlencode }}{% endif %}">
-          <button type="submit" class="min-h-12 w-full rounded-xl bg-red-50 text-sm font-bold text-red-700 dark:bg-red-950 dark:text-red-300">
+          <button type="submit" class="btn-danger w-full">
             Удалить
           </button>
         </form>
       </div>
     </article>
     {% else %}
-    <p class="rounded-3xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+    <p class="glass-card border-dashed p-6 text-center text-sm text-slate-500">
       {% if search_query %}Ученики не найдены.{% else %}В классе пока нет учеников.{% endif %}
     </p>
     {% endfor %}
@@ -64,67 +61,64 @@
 </div>
 
 <dialog id="create-student-dialog"
-  class="m-0 w-full max-w-none rounded-t-3xl bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/50 dark:bg-slate-900 dark:text-slate-100 sm:m-auto sm:max-w-md sm:rounded-3xl"
+  class="glass-panel m-0 w-full max-w-none border-white/10 bg-[#0b0f1a]/95 p-0 text-slate-100 backdrop:bg-slate-950/70 sm:m-auto sm:max-w-md"
   style="position:fixed; left:0; right:0; bottom:0; top:auto;">
   <form method="post" action="{{ url_for('main.admin_students_page') }}{% if search_query %}?search={{ search_query|urlencode }}{% endif %}" class="p-6">
     {{ form.hidden_tag() }}
     <div class="mb-5 flex items-center justify-between">
-      <h2 class="text-xl font-bold">Новый ученик</h2>
+      <h2 class="font-display text-xl font-bold text-white">Новый ученик</h2>
       <button type="button" onclick="document.getElementById('create-student-dialog').close()"
-        class="flex min-h-12 min-w-12 items-center justify-center text-2xl text-slate-500" aria-label="Закрыть">&times;</button>
+        class="flex min-h-12 min-w-12 items-center justify-center text-2xl text-slate-500 hover:text-slate-300" aria-label="Закрыть">&times;</button>
     </div>
     <div class="space-y-4">
       <div>
-        {{ form.last_name.label(class="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-300") }}
-        {{ form.last_name(class="min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-base dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100") }}
-        {% for error in form.last_name.errors %}<p class="mt-1 text-sm font-bold text-rose-600 dark:text-rose-400">{{ error }}</p>{% endfor %}
+        {{ form.last_name.label(class="mb-1 block text-sm font-bold text-slate-300") }}
+        {{ form.last_name(class="input-cyber") }}
+        {% for error in form.last_name.errors %}<p class="mt-1 text-sm font-bold text-rose-400">{{ error }}</p>{% endfor %}
       </div>
       <div>
-        {{ form.first_name.label(class="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-300") }}
-        {{ form.first_name(class="min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-base dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100") }}
-        {% for error in form.first_name.errors %}<p class="mt-1 text-sm font-bold text-rose-600 dark:text-rose-400">{{ error }}</p>{% endfor %}
+        {{ form.first_name.label(class="mb-1 block text-sm font-bold text-slate-300") }}
+        {{ form.first_name(class="input-cyber") }}
+        {% for error in form.first_name.errors %}<p class="mt-1 text-sm font-bold text-rose-400">{{ error }}</p>{% endfor %}
       </div>
       <div>
-        {{ form.birth_date.label(class="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-300") }}
-        {{ form.birth_date(type="date", class="min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-base dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100") }}
-        {% for error in form.birth_date.errors %}<p class="mt-1 text-sm font-bold text-rose-600 dark:text-rose-400">{{ error }}</p>{% endfor %}
+        {{ form.birth_date.label(class="mb-1 block text-sm font-bold text-slate-300") }}
+        {{ form.birth_date(type="date", class="input-cyber") }}
+        {% for error in form.birth_date.errors %}<p class="mt-1 text-sm font-bold text-rose-400">{{ error }}</p>{% endfor %}
       </div>
     </div>
     <div class="mt-6">
-      {{ form.submit(class="min-h-12 w-full rounded-2xl bg-emerald-700 px-5 text-base font-bold text-white shadow-lg shadow-emerald-900/20") }}
+      {{ form.submit(class="btn-cyber w-full") }}
     </div>
   </form>
 </dialog>
 
 <dialog id="edit-student-dialog"
-  class="m-0 w-full max-w-none rounded-t-3xl bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/50 dark:bg-slate-900 dark:text-slate-100 sm:m-auto sm:max-w-md sm:rounded-3xl"
+  class="glass-panel m-0 w-full max-w-none border-white/10 bg-[#0b0f1a]/95 p-0 text-slate-100 backdrop:bg-slate-950/70 sm:m-auto sm:max-w-md"
   style="position:fixed; left:0; right:0; bottom:0; top:auto;">
   <form id="edit-student-form" method="post" action="" class="p-6">
     {{ form.csrf_token }}
     <div class="mb-5 flex items-center justify-between">
-      <h2 class="text-xl font-bold">Редактировать ученика</h2>
+      <h2 class="font-display text-xl font-bold text-white">Редактировать ученика</h2>
       <button type="button" onclick="document.getElementById('edit-student-dialog').close()"
-        class="flex min-h-12 min-w-12 items-center justify-center text-2xl text-slate-500" aria-label="Закрыть">&times;</button>
+        class="flex min-h-12 min-w-12 items-center justify-center text-2xl text-slate-500 hover:text-slate-300" aria-label="Закрыть">&times;</button>
     </div>
     <div class="space-y-4">
       <div>
-        <label class="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-300">Фамилия</label>
-        <input type="text" name="last_name" id="edit-student-last-name" required maxlength="64"
-          class="min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-base dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+        <label class="mb-1 block text-sm font-bold text-slate-300">Фамилия</label>
+        <input type="text" name="last_name" id="edit-student-last-name" required maxlength="64" class="input-cyber">
       </div>
       <div>
-        <label class="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-300">Имя</label>
-        <input type="text" name="first_name" id="edit-student-first-name" required maxlength="64"
-          class="min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-base dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+        <label class="mb-1 block text-sm font-bold text-slate-300">Имя</label>
+        <input type="text" name="first_name" id="edit-student-first-name" required maxlength="64" class="input-cyber">
       </div>
       <div>
-        <label class="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-300">Дата рождения</label>
-        <input type="date" name="birth_date" id="edit-student-birth-date"
-          class="min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-base dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+        <label class="mb-1 block text-sm font-bold text-slate-300">Дата рождения</label>
+        <input type="date" name="birth_date" id="edit-student-birth-date" class="input-cyber">
       </div>
     </div>
     <div class="mt-6">
-      <button type="submit" class="min-h-12 w-full rounded-2xl bg-emerald-700 px-5 text-base font-bold text-white shadow-lg shadow-emerald-900/20">
+      <button type="submit" class="btn-cyber w-full">
         Сохранить
       </button>
     </div>

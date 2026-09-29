@@ -1,25 +1,81 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" class="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>{% block title %}Класс{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
       darkMode: 'class',
-      theme: { extend: { colors: { forest: '#315f4c', ink: '#17251f', mist: '#f6f8f5' } } }
+      theme: {
+        extend: {
+          fontFamily: {
+            display: ['Orbitron', 'ui-sans-serif', 'system-ui'],
+            sans: ['Inter', 'ui-sans-serif', 'system-ui'],
+          },
+          colors: {
+            cyber: {
+              bg: '#05070d',
+              panel: '#0b0f1a',
+            },
+          },
+        },
+      },
     };
   </script>
+  <style type="text/tailwindcss">
+    @layer components {
+      .glass-card {
+        @apply rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-md shadow-[0_8px_30px_rgba(0,0,0,0.4)];
+      }
+      .glass-panel {
+        @apply rounded-3xl border border-white/10 bg-white/[0.04] backdrop-blur-md shadow-[0_8px_40px_rgba(0,0,0,0.45)];
+      }
+      .eyebrow-neon {
+        @apply text-xs font-bold uppercase tracking-widest text-cyan-400/90;
+      }
+      .btn-cyber {
+        @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 text-sm font-bold text-white shadow-[0_0_24px_-6px_rgba(34,211,238,0.7)] transition hover:bg-cyan-500 hover:shadow-[0_0_30px_-4px_rgba(34,211,238,0.9)] active:scale-[0.98];
+      }
+      .btn-warning {
+        @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-400 px-5 text-sm font-bold text-slate-950 shadow-[0_0_24px_-6px_rgba(245,158,11,0.7)] transition hover:shadow-[0_0_30px_-4px_rgba(245,158,11,0.9)] active:scale-[0.98];
+      }
+      .btn-prize {
+        @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-500 to-emerald-400 px-5 text-sm font-bold text-slate-950 shadow-[0_0_24px_-6px_rgba(217,70,239,0.7)] transition hover:shadow-[0_0_30px_-4px_rgba(217,70,239,0.9)] active:scale-[0.98];
+      }
+      .btn-ghost {
+        @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-5 text-sm font-bold text-slate-200 backdrop-blur-md transition hover:border-cyan-400/40 hover:text-cyan-300 active:scale-[0.98];
+      }
+      .btn-danger {
+        @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-5 text-sm font-bold text-rose-300 transition hover:bg-rose-500/20 active:scale-[0.98];
+      }
+      .input-cyber {
+        @apply min-h-12 w-full rounded-xl border border-white/10 bg-white/5 px-4 text-base text-slate-100 outline-none backdrop-blur-md transition placeholder:text-slate-500 focus:border-cyan-400/60 focus:shadow-[0_0_0_3px_rgba(34,211,238,0.15),0_0_20px_-4px_rgba(34,211,238,0.5)];
+      }
+      .badge-easy {
+        @apply rounded-full bg-emerald-400/10 px-2.5 py-1 text-[11px] font-bold text-emerald-300 ring-1 ring-inset ring-emerald-400/30;
+      }
+      .badge-medium {
+        @apply rounded-full bg-amber-400/10 px-2.5 py-1 text-[11px] font-bold text-amber-300 ring-1 ring-inset ring-amber-400/30;
+      }
+      .badge-hard {
+        @apply rounded-full bg-rose-400/10 px-2.5 py-1 text-[11px] font-bold text-rose-300 ring-1 ring-inset ring-rose-400/30;
+      }
+    }
+  </style>
   <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
-  <meta name="theme-color" content="#315f4c">
+  <meta name="theme-color" content="#05070d">
   {% block head %}{% endblock %}
 </head>
-<body class="bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100">
+<body class="min-h-screen bg-cyber-bg font-sans text-slate-100 antialiased" style="background-color:#05070d; background-image:radial-gradient(60rem 60rem at 85% -10%, rgba(56,189,248,0.12), transparent 60%), radial-gradient(50rem 50rem at -10% 110%, rgba(217,70,239,0.10), transparent 60%); background-attachment:fixed;">
   <main class="mx-auto min-h-screen w-full max-w-lg px-4 pb-24 pt-6 sm:px-6">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% for category, message in messages %}
-        <div role="alert" class="mb-4 rounded-2xl border px-4 py-3 text-sm font-medium {% if category == 'error' %}border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-200{% else %}border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-200{% endif %}">
+        <div role="alert" class="glass-card mb-4 px-4 py-3 text-sm font-medium {% if category == 'error' %}border-rose-500/30 text-rose-300{% else %}border-emerald-400/30 text-emerald-300{% endif %}">
           {{ message }}
         </div>
       {% endfor %}
@@ -28,32 +84,38 @@
   </main>
 
   {% if show_navigation|default(true) %}
-    <nav aria-label="Основная навигация" class="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
-      {% set is_admin_mode = current_user is defined and current_user and current_user.is_admin %}
+    {% set is_admin_mode = current_user is defined and current_user and current_user.is_admin %}
+    <nav aria-label="Основная навигация" class="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#05070d]/90 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-lg">
       <div class="mx-auto grid max-w-lg gap-1 {% if is_admin_mode %}grid-cols-5{% else %}grid-cols-4{% endif %}">
-        <a href="{{ url_for('main.dashboard_page') }}" class="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold {% if request.endpoint == 'main.dashboard_page' %}bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300{% else %}text-slate-500 dark:text-slate-400{% endif %}">
-          <span aria-hidden="true" class="text-lg">⌂</span>Главная
-        </a>
-        <a href="{{ url_for('main.tasks_page') }}" class="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold {% if request.endpoint == 'main.tasks_page' %}bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300{% else %}text-slate-500 dark:text-slate-400{% endif %}">
-          <span aria-hidden="true" class="text-lg">✓</span>Задачи
-        </a>
-        <a href="{{ url_for('main.expenses_page') }}" class="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold {% if request.endpoint == 'main.expenses_page' %}bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300{% else %}text-slate-500 dark:text-slate-400{% endif %}">
-          <span aria-hidden="true" class="text-lg">₽</span>Расходы
-        </a>
-        {% if is_admin_mode %}
-        <a href="{{ url_for('main.admin_students_page') }}" class="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold {% if request.endpoint == 'main.admin_students_page' %}bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300{% else %}text-slate-500 dark:text-slate-400{% endif %}">
-          <span aria-hidden="true" class="text-lg">👥</span>Класс
-        </a>
-        {% endif %}
-        <a href="{{ url_for('main.profile_page') }}" class="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold {% if request.endpoint == 'main.profile_page' %}bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300{% else %}text-slate-500 dark:text-slate-400{% endif %}">
-          <span aria-hidden="true" class="text-lg">{{ user.full_name[:1]|upper }}</span>Профиль
-        </a>
+        {% set nav_items = [
+          ('main.dashboard_page', 'Хаб', 'home'),
+          ('main.tasks_page', 'Квесты', 'quest'),
+          ('main.expenses_page', 'Баланс', 'wallet'),
+        ] %}
+        {% if is_admin_mode %}{% set nav_items = nav_items + [('main.admin_students_page', 'Класс', 'users')] %}{% endif %}
+        {% set nav_items = nav_items + [('main.profile_page', 'Профиль', 'profile')] %}
+        {% for endpoint, label, icon in nav_items %}
+          {% set is_active = request.endpoint == endpoint %}
+          <a href="{{ url_for(endpoint) }}" class="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-bold transition {% if is_active %}text-cyan-300{% else %}text-slate-500 hover:text-slate-300{% endif %}">
+            <span aria-hidden="true" class="flex h-6 w-6 items-center justify-center {% if is_active %}drop-shadow-[0_0_6px_rgba(34,211,238,0.9)]{% endif %}">
+              {% if icon == 'home' %}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/></svg>
+              {% elif icon == 'quest' %}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 3v2h6V3"/><path d="m9 12 2 2 4-4"/></svg>
+              {% elif icon == 'wallet' %}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5"><path d="M3 7a2 2 0 0 1 2-2h13a1 1 0 0 1 1 1v3"/><path d="M3 7v11a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-7a1 1 0 0 0-1-1H5a2 2 0 0 1-2-2Z"/><circle cx="16" cy="14" r="1.5"/></svg>
+              {% elif icon == 'users' %}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5"><path d="M17 20v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1"/><circle cx="9" cy="7" r="4"/><path d="M23 20v-1a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              {% else %}
+                <span class="flex h-5 w-5 items-center justify-center rounded-full border {% if is_active %}border-cyan-400 text-cyan-300{% else %}border-slate-600 text-slate-400{% endif %} text-[10px] font-black">{{ user.full_name[:1]|upper }}</span>
+              {% endif %}
+            </span>
+            {{ label }}
+          </a>
+        {% endfor %}
       </div>
     </nav>
   {% endif %}
-  <script>
-    if (localStorage.theme === 'dark' || (!localStorage.theme && matchMedia('(prefers-color-scheme: dark)').matches)) document.documentElement.classList.add('dark');
-  </script>
 
   {#
     Единое модальное окно подтверждения для всех форм удаления в приложении.
@@ -61,23 +123,17 @@
     вместо стандартного onsubmit="return confirm(...)".
   #}
   <dialog id="confirm-dialog"
-    class="m-0 w-full max-w-none rounded-t-3xl bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/50 dark:bg-slate-900 dark:text-slate-100 sm:m-auto sm:max-w-sm sm:rounded-3xl"
+    class="glass-panel m-0 w-full max-w-none border-white/10 bg-[#0b0f1a]/95 p-0 text-slate-100 backdrop:bg-slate-950/70 sm:m-auto sm:max-w-sm"
     style="position:fixed; left:0; right:0; bottom:0; top:auto;">
     <div class="p-6">
       <div class="flex items-center gap-3">
-        <span aria-hidden="true" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-100 text-xl text-red-600 dark:bg-red-950 dark:text-red-300">!</span>
-        <h2 class="text-lg font-bold text-slate-900 dark:text-slate-100">Подтвердите действие</h2>
+        <span aria-hidden="true" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-rose-500/10 text-xl text-rose-300 ring-1 ring-inset ring-rose-500/30">!</span>
+        <h2 class="font-display text-lg font-bold text-slate-100">Подтвердите действие</h2>
       </div>
-      <p id="confirm-dialog-message" class="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300"></p>
+      <p id="confirm-dialog-message" class="mt-3 text-sm leading-6 text-slate-400"></p>
       <div class="mt-6 grid grid-cols-2 gap-3">
-        <button type="button" id="confirm-dialog-cancel"
-          class="min-h-12 rounded-xl border border-slate-200 text-sm font-bold text-slate-700 dark:border-slate-700 dark:text-slate-200">
-          Отмена
-        </button>
-        <button type="button" id="confirm-dialog-accept"
-          class="min-h-12 rounded-xl bg-red-600 text-sm font-bold text-white shadow-lg shadow-red-900/20">
-          Удалить
-        </button>
+        <button type="button" id="confirm-dialog-cancel" class="btn-ghost">Отмена</button>
+        <button type="button" id="confirm-dialog-accept" class="btn-danger bg-rose-600/90 text-white hover:bg-rose-500">Удалить</button>
       </div>
     </div>
   </dialog>

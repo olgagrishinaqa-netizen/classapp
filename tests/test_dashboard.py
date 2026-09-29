@@ -40,7 +40,7 @@ def test_dashboard_monthly_expenses_use_the_b_currency_symbol(client, db):
     page = client.get("/dashboard")
     assert page.status_code == 200
     html = page.data.decode()
-    card_start = html.index("РАСХОДЫ ЗА МЕСЯЦ")
+    card_start = html.index("Баланс класса")
     card_end = html.index("Перейти к финансам")
     card_html = html[card_start:card_end]
     assert "₽" not in card_html
