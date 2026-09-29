@@ -5,16 +5,16 @@
   <div class="glass-panel w-full p-6">
     <div class="mb-7">
       <a href="{{ url_for('main.login_page') }}" class="eyebrow-neon">← Войти</a>
-      <h1 class="mt-5 font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">Новый аккаунт</h1>
-      <p class="mt-2 text-slate-400">Создайте доступ к делам класса.</p>
+      <h1 class="mt-5 font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">Новый аккаунт</h1>
+      <p class="mt-2 text-slate-500 dark:text-slate-400">Создайте доступ к делам класса.</p>
     </div>
     <form method="post" class="space-y-4" novalidate>
       {{ form.hidden_tag() }}
       {% for field in [form.full_name, form.username, form.password, form.password_confirm] %}
         <div>
-          {{ field.label(class="mb-2 block text-sm font-semibold text-slate-300") }}
+          {{ field.label(class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300") }}
           {{ field(class="input-cyber", autocomplete="name" if field.name == "full_name" else "tel" if field.name == "username" else "new-password", inputmode="tel" if field.name == "username" else none, placeholder="+375 (29) 123-45-67" if field.name == "username" else none) }}
-          {% for error in field.errors %}<p class="mt-2 text-sm font-medium text-rose-400">{{ error }}</p>{% endfor %}
+          {% for error in field.errors %}<p class="mt-2 text-sm font-medium text-rose-600 dark:text-rose-400">{{ error }}</p>{% endfor %}
         </div>
       {% endfor %}
       {{ form.submit(class="btn-cyber w-full") }}

@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Редактирование взноса | Класс{% endblock %}
 {% block content %}
-<header class="mb-6"><a href="{{ url_for('main.expenses_page') }}" class="eyebrow-neon">← К балансу</a><h1 class="mt-4 font-display text-2xl font-bold tracking-tight text-white">Редактировать взнос</h1></header>
+<header class="mb-6"><a href="{{ url_for('main.expenses_page') }}" class="eyebrow-neon">← К балансу</a><h1 class="mt-4 font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Редактировать взнос</h1></header>
 <form method="post" class="glass-card p-5" novalidate>
   {{ form.hidden_tag() }}
-  {% for field in [form.student_id, form.amount] %}<div class="mb-4">{{ field.label(class="mb-2 block text-sm font-semibold text-slate-300") }}{{ field(class="input-cyber", inputmode="decimal" if field.name == "amount" else none) }}{% for error in field.errors %}<p class="mt-2 text-sm font-medium text-rose-400">{{ error }}</p>{% endfor %}</div>{% endfor %}
+  {% for field in [form.student_id, form.amount] %}<div class="mb-4">{{ field.label(class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300") }}{{ field(class="input-cyber", inputmode="decimal" if field.name == "amount" else none) }}{% for error in field.errors %}<p class="mt-2 text-sm font-medium text-rose-600 dark:text-rose-400">{{ error }}</p>{% endfor %}</div>{% endfor %}
   <button class="btn-cyber w-full">Сохранить взнос</button>
 </form>
 {% endblock %}

@@ -1,28 +1,67 @@
 {% extends "base.html" %}
 {% block title %}Профиль | Класс{% endblock %}
 {% block content %}
-<header class="mb-6"><p class="eyebrow-neon">Аккаунт</p><h1 class="mt-1 font-display text-2xl font-bold tracking-tight text-white">Профиль</h1></header>
+<header class="mb-6"><p class="eyebrow-neon">Аккаунт</p><h1 class="mt-1 font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Профиль</h1></header>
 <section class="glass-panel p-6">
   <div class="flex items-center gap-4">
-    <div class="flex h-16 w-16 items-center justify-center rounded-full border border-cyan-400/30 bg-cyan-400/10 text-2xl font-black text-cyan-300 shadow-[0_0_20px_-4px_rgba(34,211,238,0.6)]">{{ current_user.full_name[:1]|upper }}</div>
+    <div class="flex h-16 w-16 items-center justify-center rounded-full border border-cyan-200 bg-cyan-50 text-2xl font-black text-cyan-700 dark:border-cyan-400/30 dark:bg-cyan-400/10 dark:text-cyan-300 dark:shadow-[0_0_20px_-4px_rgba(34,211,238,0.6)]">{{ current_user.full_name[:1]|upper }}</div>
     <div>
-      <h2 class="text-xl font-bold text-white">{{ current_user.full_name }}</h2>
-      <p class="mt-1 text-sm text-slate-400">{{ current_user.phone }}</p>
+      <h2 class="text-xl font-bold text-slate-900 dark:text-white">{{ current_user.full_name }}</h2>
+      <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ current_user.phone }}</p>
     </div>
   </div>
-  <dl class="mt-6 space-y-3 border-t border-white/10 pt-5 text-sm">
-    <div class="flex justify-between gap-4"><dt class="text-slate-400">Роль аккаунта</dt><dd class="font-bold text-white">{{ 'Администратор' if current_user.is_admin else 'Родитель' }}</dd></div>
-    <div class="flex justify-between gap-4"><dt class="text-slate-400">Активный режим</dt><dd class="font-bold text-white">{{ 'Администратор' if active_role == 'admin' else 'Родитель' }}</dd></div>
+  <dl class="mt-6 space-y-3 border-t border-slate-200 pt-5 text-sm dark:border-white/10">
+    <div class="flex justify-between gap-4"><dt class="text-slate-500 dark:text-slate-400">Роль аккаунта</dt><dd class="font-bold text-slate-900 dark:text-white">{{ 'Администратор' if current_user.is_admin else 'Родитель' }}</dd></div>
+    <div class="flex justify-between gap-4"><dt class="text-slate-500 dark:text-slate-400">Активный режим</dt><dd class="font-bold text-slate-900 dark:text-white">{{ 'Администратор' if active_role == 'admin' else 'Родитель' }}</dd></div>
   </dl>
 </section>
+
+<section class="glass-card mt-5 p-5">
+  <h2 class="font-display text-lg font-bold text-slate-900 dark:text-white">Оформление</h2>
+  <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Выберите тему интерфейса. Светлая — по умолчанию.</p>
+  <div class="mt-4 grid grid-cols-2 gap-3" role="radiogroup" aria-label="Тема интерфейса">
+    <button type="button" id="theme-choice-light" role="radio" class="flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 px-4 text-sm font-bold transition">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+      Светлая
+    </button>
+    <button type="button" id="theme-choice-dark" role="radio" class="flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 px-4 text-sm font-bold transition">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></svg>
+      Тёмная
+    </button>
+  </div>
+</section>
+<script>
+  (function () {
+    var lightBtn = document.getElementById('theme-choice-light');
+    var darkBtn = document.getElementById('theme-choice-dark');
+
+    var ACTIVE_LIGHT = 'flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-cyan-600 bg-cyan-50 px-4 text-sm font-bold text-cyan-700 transition dark:border-cyan-400 dark:bg-cyan-400/10 dark:text-cyan-300';
+    var INACTIVE = 'flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-slate-200 bg-transparent px-4 text-sm font-bold text-slate-500 transition hover:border-slate-300 dark:border-white/10 dark:text-slate-400 dark:hover:border-white/20';
+
+    function applyTheme(theme) {
+      document.documentElement.classList.toggle('dark', theme === 'dark');
+      localStorage.theme = theme;
+      lightBtn.className = theme === 'light' ? ACTIVE_LIGHT : INACTIVE;
+      darkBtn.className = theme === 'dark' ? ACTIVE_LIGHT : INACTIVE;
+      lightBtn.setAttribute('aria-checked', String(theme === 'light'));
+      darkBtn.setAttribute('aria-checked', String(theme === 'dark'));
+    }
+
+    lightBtn.addEventListener('click', function () { applyTheme('light'); });
+    darkBtn.addEventListener('click', function () { applyTheme('dark'); });
+
+    applyTheme(localStorage.theme === 'dark' ? 'dark' : 'light');
+  })();
+</script>
+
 {% if current_user.is_admin %}
-  <section class="glass-card mt-5 border-rose-500/20 bg-rose-500/5 p-5">
-    <h2 class="font-display text-lg font-bold text-rose-300">Тестирование ролей</h2>
-    <p class="mt-2 text-sm text-rose-300/80">Меняет только отображаемый режим в текущей сессии. Права аккаунта остаются прежними.</p>
+  <section class="glass-card mt-5 border-rose-200 bg-rose-50 p-5 dark:border-rose-500/20 dark:bg-rose-500/5">
+    <h2 class="font-display text-lg font-bold text-rose-700 dark:text-rose-300">Тестирование ролей</h2>
+    <p class="mt-2 text-sm text-rose-600/90 dark:text-rose-300/80">Меняет только отображаемый режим в текущей сессии. Права аккаунта остаются прежними.</p>
     <form action="{{ url_for('main.change_role') }}" method="post" class="mt-4 flex gap-3">
       {{ form.hidden_tag() }}
-      {{ form.role(class="input-cyber min-w-0 flex-1 border-rose-500/30") }}
-      <button class="btn-danger bg-rose-600/90 px-4 text-white hover:bg-rose-500">Применить</button>
+      {{ form.role(class="input-cyber min-w-0 flex-1 border-rose-200 dark:border-rose-500/30") }}
+      <button class="btn-danger bg-rose-600 px-4 text-white hover:bg-rose-500 dark:bg-rose-600/90">Применить</button>
     </form>
   </section>
 {% endif %}

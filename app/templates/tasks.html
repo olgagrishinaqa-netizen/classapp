@@ -4,7 +4,7 @@
 <header class="mb-6 flex items-start justify-between">
   <div>
     <p class="eyebrow-neon">Планирование</p>
-    <h1 class="mt-1 font-display text-2xl font-bold tracking-tight text-white">Активные квесты</h1>
+    <h1 class="mt-1 font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Активные квесты</h1>
   </div>
   {% if current_user.is_admin %}
   <button type="button" onclick="document.getElementById('create-task-dialog').showModal()" class="btn-cyber">
@@ -13,7 +13,7 @@
   {% endif %}
 </header>
 <div class="glass-card mb-5 grid grid-cols-2 p-1" role="tablist">
-  <button type="button" class="min-h-12 rounded-xl bg-cyan-500/15 px-3 text-sm font-bold text-cyan-300 shadow-[0_0_16px_-6px_rgba(34,211,238,0.7)]" data-tab="active" role="tab">Активные ({{ active_tasks|length }})</button>
+  <button type="button" class="min-h-12 rounded-xl bg-cyan-100 px-3 text-sm font-bold text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300 dark:shadow-[0_0_16px_-6px_rgba(34,211,238,0.7)]" data-tab="active" role="tab">Активные ({{ active_tasks|length }})</button>
   <button type="button" class="min-h-12 rounded-xl px-3 text-sm font-bold text-slate-500" data-tab="completed" role="tab">Пройдено ({{ completed_tasks|length }})</button>
 </div>
 <section data-panel="active" class="space-y-3">
@@ -22,20 +22,20 @@
     {% set overdue = task.deadline and task.deadline < now_date %}
     <article class="glass-card flex items-start gap-3 p-4">
       <form action="{{ url_for('main.complete_task_page', task_id=task.id) }}" method="post">
-        <button class="mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl border-2 border-slate-600 text-transparent transition hover:border-emerald-400 hover:text-emerald-400 hover:shadow-[0_0_14px_-2px_rgba(52,211,153,0.7)]" aria-label="Выполнить квест">✓</button>
+        <button class="mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl border-2 border-slate-300 text-transparent transition hover:border-emerald-500 hover:text-emerald-500 dark:border-slate-600 dark:hover:border-emerald-400 dark:hover:text-emerald-400 dark:hover:shadow-[0_0_14px_-2px_rgba(52,211,153,0.7)]" aria-label="Выполнить квест">✓</button>
       </form>
       <div class="min-w-0 flex-1">
         <div class="flex items-start justify-between gap-3">
-          <h2 class="font-bold text-white">{{ task.title }}</h2>
+          <h2 class="font-bold text-slate-900 dark:text-white">{{ task.title }}</h2>
           <span class="badge-{{ 'hard' if priority == 'high' else 'easy' if priority == 'low' else 'medium' }} shrink-0">
             {{ 'Сложный' if priority == 'high' else 'Лёгкий' if priority == 'low' else 'Средний' }}
           </span>
         </div>
-        {% if task.description %}<p class="mt-1 text-sm text-slate-400">{{ task.description }}</p>{% endif %}
+        {% if task.description %}<p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ task.description }}</p>{% endif %}
         <div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <time class="block text-xs text-slate-500">{{ task.created_at.strftime('%d.%m.%Y') }}</time>
+          <time class="block text-xs text-slate-400 dark:text-slate-500">{{ task.created_at.strftime('%d.%m.%Y') }}</time>
           {% if task.deadline %}
-            <span class="rounded-full px-2 py-0.5 text-xs font-bold {% if overdue %}bg-rose-500/10 text-rose-300 ring-1 ring-inset ring-rose-500/30 shadow-[0_0_10px_-3px_rgba(244,63,94,0.7)]{% else %}bg-amber-400/10 text-amber-300 ring-1 ring-inset ring-amber-400/30{% endif %}">
+            <span class="rounded-full px-2 py-0.5 text-xs font-bold {% if overdue %}bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/30 dark:shadow-[0_0_10px_-3px_rgba(244,63,94,0.7)]{% else %}bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/30{% endif %}">
               Дедлайн: {{ task.deadline.strftime('%d.%m.%Y') }}
             </span>
           {% endif %}
@@ -48,10 +48,10 @@
   {% for task in completed_tasks %}
     <article class="glass-card flex items-start gap-3 p-4 opacity-60">
       <form action="{{ url_for('main.complete_task_page', task_id=task.id) }}" method="post">
-        <button class="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-300 ring-1 ring-inset ring-emerald-400/40" aria-label="Вернуть квест в активные">✓</button>
+        <button class="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 ring-1 ring-inset ring-emerald-300 dark:bg-emerald-500/20 dark:text-emerald-300 dark:ring-emerald-400/40" aria-label="Вернуть квест в активные">✓</button>
       </form>
       <div>
-        <h2 class="font-bold text-white line-through">{{ task.title }}</h2>
+        <h2 class="font-bold text-slate-900 line-through dark:text-white">{{ task.title }}</h2>
         {% if task.description %}<p class="mt-1 text-sm text-slate-500">{{ task.description }}</p>{% endif %}
       </div>
     </article>
@@ -59,30 +59,30 @@
 </section>
 {% if current_user.is_admin %}
 <dialog id="create-task-dialog"
-  class="glass-panel m-0 w-full max-w-none border-white/10 bg-[#0b0f1a]/95 p-0 text-slate-100 backdrop:bg-slate-950/70 sm:m-auto sm:max-w-md"
+  class="glass-panel m-0 w-full max-w-none border-slate-200 bg-white p-0 text-slate-900 backdrop:bg-slate-950/50 dark:border-white/10 dark:bg-[#0b0f1a]/95 dark:text-slate-100 dark:backdrop:bg-slate-950/70 sm:m-auto sm:max-w-md"
   style="position:fixed; left:0; right:0; bottom:0; top:auto;">
   <form method="post" action="{{ url_for('main.tasks_page') }}" class="p-6">
     {{ form.hidden_tag() }}
     <div class="mb-5 flex items-center justify-between">
-      <h2 class="font-display text-xl font-bold text-white">Новый квест</h2>
+      <h2 class="font-display text-xl font-bold text-slate-900 dark:text-white">Новый квест</h2>
       <button type="button" onclick="document.getElementById('create-task-dialog').close()"
-        class="flex min-h-12 min-w-12 items-center justify-center text-2xl text-slate-500 hover:text-slate-300" aria-label="Закрыть">&times;</button>
+        class="flex min-h-12 min-w-12 items-center justify-center text-2xl text-slate-500 hover:text-slate-700 dark:hover:text-slate-300" aria-label="Закрыть">&times;</button>
     </div>
     <div class="space-y-4">
       <div>
-        {{ form.title.label(class="mb-1 block text-sm font-bold text-slate-300") }}
+        {{ form.title.label(class="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-300") }}
         {{ form.title(class="input-cyber") }}
-        {% for error in form.title.errors %}<p class="mt-1 text-sm font-bold text-rose-400">{{ error }}</p>{% endfor %}
+        {% for error in form.title.errors %}<p class="mt-1 text-sm font-bold text-rose-600 dark:text-rose-400">{{ error }}</p>{% endfor %}
       </div>
       <div>
-        {{ form.description.label(class="mb-1 block text-sm font-bold text-slate-300") }}
+        {{ form.description.label(class="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-300") }}
         {{ form.description(rows="3", class="input-cyber py-3") }}
-        {% for error in form.description.errors %}<p class="mt-1 text-sm font-bold text-rose-400">{{ error }}</p>{% endfor %}
+        {% for error in form.description.errors %}<p class="mt-1 text-sm font-bold text-rose-600 dark:text-rose-400">{{ error }}</p>{% endfor %}
       </div>
       <div>
-        {{ form.deadline.label(class="mb-1 block text-sm font-bold text-slate-300") }}
+        {{ form.deadline.label(class="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-300") }}
         {{ form.deadline(type="date", class="input-cyber") }}
-        {% for error in form.deadline.errors %}<p class="mt-1 text-sm font-bold text-rose-400">{{ error }}</p>{% endfor %}
+        {% for error in form.deadline.errors %}<p class="mt-1 text-sm font-bold text-rose-600 dark:text-rose-400">{{ error }}</p>{% endfor %}
       </div>
     </div>
     <div class="mt-6">
@@ -95,7 +95,7 @@
   document.querySelectorAll('[data-tab]').forEach((tab) => tab.addEventListener('click', () => {
     document.querySelectorAll('[data-panel]').forEach((panel) => panel.classList.toggle('hidden', panel.dataset.panel !== tab.dataset.tab));
     document.querySelectorAll('[data-tab]').forEach((item) => item.className = 'min-h-12 rounded-xl px-3 text-sm font-bold text-slate-500');
-    tab.className = 'min-h-12 rounded-xl bg-cyan-500/15 px-3 text-sm font-bold text-cyan-300 shadow-[0_0_16px_-6px_rgba(34,211,238,0.7)]';
+    tab.className = 'min-h-12 rounded-xl bg-cyan-100 px-3 text-sm font-bold text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300 dark:shadow-[0_0_16px_-6px_rgba(34,211,238,0.7)]';
   }));
 </script>
 {% endblock %}
