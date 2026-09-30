@@ -25,18 +25,34 @@ from werkzeug.utils import secure_filename
 
 from .extensions import db
 from .forms import (
+    BellScheduleEntryForm,
     ExpenseForm,
+    GeneralInfoForm,
     LoginForm,
     NewsForm,
     PaymentForm,
     RegisterForm,
     RoleForm,
+    ScheduleEntryForm,
     StudentForm,
     TaskForm,
     UserManagementForm,
     UserRoleForm,
+    WEEKDAY_CHOICES,
 )
-from .models import Expense, ExpenseReport, News, Payment, Student, Task, User, local_now
+from .models import (
+    BellScheduleEntry,
+    Expense,
+    ExpenseReport,
+    GeneralInfo,
+    News,
+    Payment,
+    ScheduleEntry,
+    Student,
+    Task,
+    User,
+    local_now,
+)
 
 bp = Blueprint("main", __name__)
 
@@ -44,6 +60,8 @@ STATUS_LABELS = {"created": "Создана", "in_progress": "В работе", 
 ROLE_LABELS = {"parent": "Родитель", "student": "Ученик", "admin": "Админ"}
 ALLOWED_RECEIPT_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "pdf"}
 ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
+ALLOWED_GENERAL_INFO_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "pdf", "doc", "docx", "xls", "xlsx"}
+WEEKDAY_LABELS = dict(WEEKDAY_CHOICES)
 
 
 def current_user():
@@ -392,6 +410,295 @@ def edit_news_page(news_id):
         active_role=active_role,
         form=form,
         news_item=news_item,
+    )
+
+
+@bp.route("/schedule", methods=["GET", "POST"])
+@login_required_page
+def schedule_page():
+    user, active_role = page_user()
+    can_manage = user.is_admin and active_role == "admin"
+
+    form = ScheduleEntryForm()
+    if request.method == "POST":
+        if not can_manage:
+            flash("Заполнять расписание класса может только администратор.", "error")
+        elif form.validate_on_submit():
+            entry = ScheduleEntry(
+                day_of_week=form.day_of_week.data,
+                lesson_number=form.lesson_number.data,
+                subject=form.subject.data.strip(),
+                teacher=(form.teacher.data or "").strip() or None,
+                room=(form.room.data or "").strip() or None,
+            )
+            db.session.add(entry)
+            try:
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
+                flash("Урок с таким номером в этот день уже есть в расписании.", "error")
+            else:
+                flash("Урок добавлен в расписание.", "success")
+                return redirect(url_for("main.schedule_page"))
+
+    entries = ScheduleEntry.query.order_by(
+        ScheduleEntry.day_of_week.asc(), ScheduleEntry.lesson_number.asc()
+    ).all()
+    entries_by_day = {day: [] for day, _ in WEEKDAY_CHOICES}
+    for entry in entries:
+        entries_by_day.setdefault(entry.day_of_week, []).append(entry)
+
+    return render_template(
+        "schedule.html",
+        user=user,
+        current_user=user,
+        active_role=active_role,
+        can_manage=can_manage,
+        form=form,
+        weekday_choices=WEEKDAY_CHOICES,
+        entries_by_day=entries_by_day,
+    )
+
+
+@bp.post("/schedule/<int:entry_id>/edit")
+@login_required_page
+def edit_schedule_entry_page(entry_id):
+    user, active_role = page_user()
+    if not user.is_admin or active_role != "admin":
+        flash("Редактировать расписание класса может только администратор.", "error")
+        return redirect(url_for("main.schedule_page"))
+    entry = db.session.get(ScheduleEntry, entry_id)
+    if not entry:
+        flash("Урок не найден.", "error")
+        return redirect(url_for("main.schedule_page"))
+
+    entry.day_of_week = int(request.form.get("day_of_week", entry.day_of_week))
+    entry.lesson_number = int(request.form.get("lesson_number", entry.lesson_number))
+    entry.subject = (request.form.get("subject") or entry.subject).strip()
+    entry.teacher = (request.form.get("teacher") or "").strip() or None
+    entry.room = (request.form.get("room") or "").strip() or None
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        flash("Урок с таким номером в этот день уже есть в расписании.", "error")
+    else:
+        flash("Урок обновлён.", "success")
+    return redirect(url_for("main.schedule_page"))
+
+
+@bp.post("/schedule/<int:entry_id>/delete")
+@login_required_page
+def delete_schedule_entry_page(entry_id):
+    user, active_role = page_user()
+    if not user.is_admin or active_role != "admin":
+        flash("Удалять из расписания класса может только администратор.", "error")
+        return redirect(url_for("main.schedule_page"))
+    entry = db.session.get(ScheduleEntry, entry_id)
+    if entry:
+        db.session.delete(entry)
+        db.session.commit()
+        flash("Урок удалён из расписания.", "success")
+    return redirect(url_for("main.schedule_page"))
+
+
+@bp.route("/bell-schedule", methods=["GET", "POST"])
+@login_required_page
+def bell_schedule_page():
+    user, active_role = page_user()
+    can_manage = user.is_admin and active_role == "admin"
+
+    form = BellScheduleEntryForm()
+    if request.method == "POST":
+        if not can_manage:
+            flash("Заполнять расписание звонков может только администратор.", "error")
+        elif form.validate_on_submit():
+            if form.end_time.data <= form.start_time.data:
+                form.end_time.errors.append("Время окончания должно быть позже времени начала.")
+            else:
+                entry = BellScheduleEntry(
+                    lesson_number=form.lesson_number.data,
+                    start_time=form.start_time.data,
+                    end_time=form.end_time.data,
+                )
+                db.session.add(entry)
+                try:
+                    db.session.commit()
+                except IntegrityError:
+                    db.session.rollback()
+                    flash("Урок с таким номером уже есть в расписании звонков.", "error")
+                else:
+                    flash("Строка расписания звонков добавлена.", "success")
+                    return redirect(url_for("main.bell_schedule_page"))
+
+    entries = BellScheduleEntry.query.order_by(BellScheduleEntry.lesson_number.asc()).all()
+    return render_template(
+        "bell_schedule.html",
+        user=user,
+        current_user=user,
+        active_role=active_role,
+        can_manage=can_manage,
+        form=form,
+        entries=entries,
+    )
+
+
+@bp.post("/bell-schedule/<int:entry_id>/edit")
+@login_required_page
+def edit_bell_schedule_entry_page(entry_id):
+    user, active_role = page_user()
+    if not user.is_admin or active_role != "admin":
+        flash("Редактировать расписание звонков может только администратор.", "error")
+        return redirect(url_for("main.bell_schedule_page"))
+    entry = db.session.get(BellScheduleEntry, entry_id)
+    if not entry:
+        flash("Строка расписания не найдена.", "error")
+        return redirect(url_for("main.bell_schedule_page"))
+
+    try:
+        start_time = datetime.strptime(request.form.get("start_time", ""), "%H:%M").time()
+        end_time = datetime.strptime(request.form.get("end_time", ""), "%H:%M").time()
+    except ValueError:
+        flash("Укажите корректное время в формате ЧЧ:ММ.", "error")
+        return redirect(url_for("main.bell_schedule_page"))
+    if end_time <= start_time:
+        flash("Время окончания должно быть позже времени начала.", "error")
+        return redirect(url_for("main.bell_schedule_page"))
+
+    entry.lesson_number = int(request.form.get("lesson_number", entry.lesson_number))
+    entry.start_time = start_time
+    entry.end_time = end_time
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        flash("Урок с таким номером уже есть в расписании звонков.", "error")
+    else:
+        flash("Строка расписания звонков обновлена.", "success")
+    return redirect(url_for("main.bell_schedule_page"))
+
+
+@bp.post("/bell-schedule/<int:entry_id>/delete")
+@login_required_page
+def delete_bell_schedule_entry_page(entry_id):
+    user, active_role = page_user()
+    if not user.is_admin or active_role != "admin":
+        flash("Удалять из расписания звонков может только администратор.", "error")
+        return redirect(url_for("main.bell_schedule_page"))
+    entry = db.session.get(BellScheduleEntry, entry_id)
+    if entry:
+        db.session.delete(entry)
+        db.session.commit()
+        flash("Строка расписания звонков удалена.", "success")
+    return redirect(url_for("main.bell_schedule_page"))
+
+
+@bp.route("/info", methods=["GET", "POST"])
+@login_required_page
+def general_info_page():
+    user, active_role = page_user()
+    can_manage = user.is_admin and active_role == "admin"
+
+    form = GeneralInfoForm()
+    if form.validate_on_submit():
+        if not can_manage:
+            flash("Заполнять общую информацию может только администратор.", "error")
+        else:
+            file_name = None
+            file_path = None
+            uploaded = form.file.data
+            if uploaded and uploaded.filename:
+                upload_folder = current_app.config.get("UPLOAD_FOLDER", os.path.join(os.getcwd(), "uploads"))
+                file_path, file_error = _save_uploaded_file(
+                    uploaded,
+                    allowed_extensions=ALLOWED_GENERAL_INFO_EXTENSIONS,
+                    destination_folder=upload_folder,
+                    field_error_message="Допустимы изображения, PDF, DOC(X) или XLS(X).",
+                )
+                if file_error:
+                    form.file.errors.append(file_error)
+                else:
+                    file_name = secure_filename(uploaded.filename)
+            if not form.file.errors:
+                db.session.add(
+                    GeneralInfo(
+                        description=form.description.data.strip(),
+                        file_name=file_name,
+                        file_path=file_path,
+                    )
+                )
+                db.session.commit()
+                flash("Информация добавлена.", "success")
+                return redirect(url_for("main.general_info_page"))
+
+    items = GeneralInfo.query.order_by(GeneralInfo.created_at.desc()).all()
+    return render_template(
+        "general_info.html",
+        user=user,
+        current_user=user,
+        active_role=active_role,
+        can_manage=can_manage,
+        form=form,
+        items=items,
+    )
+
+
+@bp.post("/info/<int:info_id>/delete")
+@login_required_page
+def delete_general_info_page(info_id):
+    user, active_role = page_user()
+    if not user.is_admin or active_role != "admin":
+        flash("Удалять общую информацию может только администратор.", "error")
+        return redirect(url_for("main.general_info_page"))
+    item = db.session.get(GeneralInfo, info_id)
+    if item:
+        db.session.delete(item)
+        db.session.commit()
+        flash("Запись удалена.", "success")
+    return redirect(url_for("main.general_info_page"))
+
+
+@bp.route("/info/<int:info_id>/edit", methods=["GET", "POST"])
+@login_required_page
+def edit_general_info_page(info_id):
+    user, active_role = page_user()
+    if not user.is_admin or active_role != "admin":
+        flash("Редактировать общую информацию может только администратор.", "error")
+        return redirect(url_for("main.general_info_page"))
+    item = db.session.get(GeneralInfo, info_id)
+    if not item:
+        flash("Запись не найдена.", "error")
+        return redirect(url_for("main.general_info_page"))
+
+    form = GeneralInfoForm(description=item.description)
+    if form.validate_on_submit():
+        uploaded = form.file.data
+        if uploaded and uploaded.filename:
+            upload_folder = current_app.config.get("UPLOAD_FOLDER", os.path.join(os.getcwd(), "uploads"))
+            file_path, file_error = _save_uploaded_file(
+                uploaded,
+                allowed_extensions=ALLOWED_GENERAL_INFO_EXTENSIONS,
+                destination_folder=upload_folder,
+                field_error_message="Допустимы изображения, PDF, DOC(X) или XLS(X).",
+            )
+            if file_error:
+                form.file.errors.append(file_error)
+            else:
+                item.file_name = secure_filename(uploaded.filename)
+                item.file_path = file_path
+        if not form.file.errors:
+            item.description = form.description.data.strip()
+            db.session.commit()
+            flash("Запись обновлена.", "success")
+            return redirect(url_for("main.general_info_page"))
+
+    return render_template(
+        "general_info_edit.html",
+        user=user,
+        current_user=user,
+        active_role=active_role,
+        form=form,
+        item=item,
     )
 
 

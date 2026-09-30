@@ -5,8 +5,28 @@ from decimal import Decimal
 
 from flask_wtf import FlaskForm
 from flask_wtf.file import FileAllowed, FileField
-from wtforms import DateField, DecimalField, PasswordField, SelectField, StringField, SubmitField, TextAreaField
+from wtforms import (
+    DateField,
+    DecimalField,
+    IntegerField,
+    PasswordField,
+    SelectField,
+    StringField,
+    SubmitField,
+    TextAreaField,
+    TimeField,
+)
 from wtforms.validators import DataRequired, EqualTo, Length, NumberRange, Optional
+
+WEEKDAY_CHOICES = [
+    (0, "Понедельник"),
+    (1, "Вторник"),
+    (2, "Среда"),
+    (3, "Четверг"),
+    (4, "Пятница"),
+    (5, "Суббота"),
+    (6, "Воскресенье"),
+]
 
 
 class LoginForm(FlaskForm):
@@ -127,6 +147,44 @@ class UserManagementForm(FlaskForm):
     )
     password = PasswordField("Пароль", validators=[Optional(), Length(min=6, max=128)])
     submit = SubmitField("Сохранить пользователя")
+
+
+class ScheduleEntryForm(FlaskForm):
+    """Создание/редактирование урока в недельном расписании класса."""
+
+    # Без DataRequired: значение "Понедельник" = 0, а DataRequired считает
+    # 0 пустым значением (классический баг WTForms с coerce=int).
+    day_of_week = SelectField("День недели", choices=WEEKDAY_CHOICES, coerce=int)
+    lesson_number = IntegerField("№ урока", validators=[DataRequired(), NumberRange(min=1, max=12)])
+    subject = StringField("Предмет", validators=[DataRequired(), Length(max=120)])
+    teacher = StringField("Учитель", validators=[Optional(), Length(max=120)])
+    room = StringField("Кабинет", validators=[Optional(), Length(max=40)])
+    submit = SubmitField("Сохранить урок")
+
+
+class BellScheduleEntryForm(FlaskForm):
+    """Создание/редактирование строки расписания звонков."""
+
+    lesson_number = IntegerField("№ урока", validators=[DataRequired(), NumberRange(min=1, max=12)])
+    start_time = TimeField("Начало", validators=[DataRequired()])
+    end_time = TimeField("Конец", validators=[DataRequired()])
+    submit = SubmitField("Сохранить")
+
+
+class GeneralInfoForm(FlaskForm):
+    """Создание/редактирование записи общей информации класса."""
+
+    description = TextAreaField("Описание", validators=[DataRequired()])
+    file = FileField(
+        "Файл (изображение, PDF, документ или таблица)",
+        validators=[
+            FileAllowed(
+                ["jpg", "jpeg", "png", "webp", "pdf", "doc", "docx", "xls", "xlsx"],
+                "Допустимы изображения (JPG/PNG/WEBP), PDF, DOC(X) или XLS(X).",
+            )
+        ],
+    )
+    submit = SubmitField("Сохранить")
 
 
 class StudentForm(FlaskForm):

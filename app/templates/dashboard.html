@@ -55,6 +55,12 @@
   </a>
 </section>
 
+<div class="mt-4 grid gap-3">
+  <a href="{{ url_for('main.schedule_page') }}" class="btn-ghost justify-between px-5">Расписание класса <span>→</span></a>
+  <a href="{{ url_for('main.bell_schedule_page') }}" class="btn-ghost justify-between px-5">Расписание звонков <span>→</span></a>
+  <a href="{{ url_for('main.general_info_page') }}" class="btn-ghost justify-between px-5">Общая информация <span>→</span></a>
+</div>
+
 {% if current_user.is_admin %}
 <div class="mt-4 grid gap-3">
   <a href="{{ url_for('main.users_page') }}" class="btn-ghost justify-between px-5">Управление пользователями <span>→</span></a>

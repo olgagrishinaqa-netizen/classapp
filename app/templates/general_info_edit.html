@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Редактирование записи | Класс{% endblock %}
+{% block content %}
+<header class="mb-6"><a href="{{ url_for('main.general_info_page') }}" class="eyebrow-neon">← К общей информации</a><h1 class="mt-4 font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Редактировать запись</h1></header>
+<form method="post" enctype="multipart/form-data" class="glass-card p-5" novalidate>
+  {{ form.hidden_tag() }}
+  <div class="space-y-4">
+    <div>
+      {{ form.description.label(class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300") }}
+      {{ form.description(rows="4", class="input-cyber py-3") }}
+      {% for error in form.description.errors %}<p class="mt-2 text-sm font-medium text-rose-600 dark:text-rose-400">{{ error }}</p>{% endfor %}
+    </div>
+    <div>
+      {% if item.file_url %}
+        <p class="mb-2 text-xs text-slate-400 dark:text-slate-500">Текущий файл: {{ item.file_name }}. Выберите новый, чтобы заменить его.</p>
+      {% endif %}
+      {{ form.file.label(class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300") }}
+      {{ form.file(class="block w-full text-sm text-slate-500 file:mr-3 file:min-h-12 file:rounded-xl file:border-0 file:bg-cyan-50 file:px-4 file:text-sm file:font-bold file:text-cyan-700 dark:text-slate-400 dark:file:bg-cyan-500/15 dark:file:text-cyan-300") }}
+      {% for error in form.file.errors %}<p class="mt-2 text-sm font-medium text-rose-600 dark:text-rose-400">{{ error }}</p>{% endfor %}
+    </div>
+  </div>
+  <button class="btn-cyber mt-5 w-full">Сохранить изменения</button>
+</form>
+{% endblock %}

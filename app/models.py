@@ -152,6 +152,57 @@ class News(db.Model):
         return f"/uploads/{self.image_path}"
 
 
+class ScheduleEntry(db.Model):
+    """Урок в недельном расписании класса. Управление доступно только
+    администратору, остальные пользователи — только просмотр."""
+
+    __tablename__ = "schedule_entry"
+    __table_args__ = (
+        db.UniqueConstraint("day_of_week", "lesson_number", name="uq_schedule_day_lesson"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    day_of_week = db.Column(db.Integer, nullable=False)  # 0=Понедельник .. 6=Воскресенье
+    lesson_number = db.Column(db.Integer, nullable=False)
+    subject = db.Column(db.String(120), nullable=False)
+    teacher = db.Column(db.String(120), nullable=True)
+    room = db.Column(db.String(40), nullable=True)
+    created_at = db.Column(db.DateTime, default=local_now, nullable=False)
+
+
+class BellScheduleEntry(db.Model):
+    """Строка расписания звонков: номер урока и время начала/конца.
+    Управление доступно только администратору."""
+
+    __tablename__ = "bell_schedule_entry"
+
+    id = db.Column(db.Integer, primary_key=True)
+    lesson_number = db.Column(db.Integer, nullable=False, unique=True)
+    start_time = db.Column(db.Time, nullable=False)
+    end_time = db.Column(db.Time, nullable=False)
+
+
+class GeneralInfo(db.Model):
+    """Запись общей информации класса: описание и опциональный прикреплённый
+    файл (изображение, PDF, документ или таблица). Управление доступно
+    только администратору, остальные пользователи — только просмотр."""
+
+    __tablename__ = "general_info"
+
+    id = db.Column(db.Integer, primary_key=True)
+    description = db.Column(db.Text, nullable=False)
+    file_name = db.Column(db.String(255))
+    file_path = db.Column(db.String(255))
+    created_at = db.Column(db.DateTime, default=local_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=local_now, onupdate=local_now, nullable=False)
+
+    @property
+    def file_url(self):
+        if not self.file_path:
+            return None
+        return f"/uploads/{self.file_path}"
+
+
 class TaskComment(db.Model):
     """Комментарий к задаче (модель не используется UI на текущий момент)."""
 

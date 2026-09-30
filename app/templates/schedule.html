@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}Расписание класса | Класс{% endblock %}
+{% block content %}
+<header class="mb-6 flex items-start justify-between">
+  <div>
+    <p class="eyebrow-neon">Хаб</p>
+    <h1 class="mt-1 font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Расписание класса</h1>
+  </div>
+  {% if can_manage %}
+  <button type="button" onclick="document.getElementById('create-schedule-dialog').showModal()" class="btn-cyber">
+    + Урок
+  </button>
+  {% endif %}
+</header>
+
+<div class="glass-card mb-5 flex gap-1 overflow-x-auto p-1" role="tablist">
+  {% for day, label in weekday_choices %}
+    <button type="button" class="schedule-day-tab min-h-12 shrink-0 rounded-xl px-3 text-sm font-bold {% if loop.first %}bg-cyan-100 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300 dark:shadow-[0_0_16px_-6px_rgba(34,211,238,0.7)]{% else %}text-slate-500{% endif %}" data-day="{{ day }}" role="tab">{{ label[:2] }}</button>
+  {% endfor %}
+</div>
+
+{% for day, label in weekday_choices %}
+<section data-day-panel="{{ day }}" class="space-y-3 {% if not loop.first %}hidden{% endif %}">
+  <h2 class="px-1 text-sm font-bold text-slate-500 dark:text-slate-400">{{ label }}</h2>
+  {% for entry in entries_by_day.get(day, []) %}
+    <article class="glass-card flex items-start gap-3 p-4">
+      <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cyan-100 text-sm font-black text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300">{{ entry.lesson_number }}</span>
+      <div class="min-w-0 flex-1">
+        <h3 class="font-bold text-slate-900 dark:text-white">{{ entry.subject }}</h3>
+        {% if entry.teacher or entry.room %}
+        <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          {{ entry.teacher }}{% if entry.teacher and entry.room %} · {% endif %}{% if entry.room %}каб. {{ entry.room }}{% endif %}
+        </p>
+        {% endif %}
+      </div>
+      {% if can_manage %}
+      <div class="flex shrink-0 items-center gap-2">
+        <button type="button" class="edit-schedule-btn flex min-h-12 min-w-12 items-center justify-center rounded-xl border border-slate-200 text-lg text-slate-500 hover:border-cyan-400 hover:text-cyan-700 dark:border-white/10 dark:text-slate-300 dark:hover:border-cyan-400/40 dark:hover:text-cyan-300"
+          data-id="{{ entry.id }}" data-day="{{ entry.day_of_week }}" data-lesson="{{ entry.lesson_number }}"
+          data-subject="{{ entry.subject }}" data-teacher="{{ entry.teacher or '' }}" data-room="{{ entry.room or '' }}"
+          aria-label="Редактировать урок">✎</button>
+        <form action="{{ url_for('main.delete_schedule_entry_page', entry_id=entry.id) }}" method="post" class="js-confirm-delete" data-confirm-message="Удалить урок «{{ entry.subject }}»?">
+          <button class="flex min-h-12 min-w-12 items-center justify-center rounded-xl border border-rose-200 text-lg text-rose-600 dark:border-rose-500/30 dark:text-rose-300" aria-label="Удалить урок">⌫</button>
+        </form>
+      </div>
+      {% endif %}
+    </article>
+  {% else %}
+    <p class="glass-card p-6 text-center text-slate-500">Уроков на {{ label|lower }} пока нет.</p>
+  {% endfor %}
+</section>
+{% endfor %}
+
+{% if can_manage %}
+<dialog id="create-schedule-dialog"
+  class="glass-panel m-0 w-full max-w-none border-slate-200 bg-white p-0 text-slate-900 backdrop:bg-slate-950/50 dark:border-white/10 dark:bg-[#0b0f1a]/95 dark:text-slate-100 dark:backdrop:bg-slate-950/70 sm:m-auto sm:max-w-md"
+  style="position:fixed; left:0; right:0; bottom:0; top:auto;">
+  <form method="post" action="{{ url_for('main.schedule_page') }}" class="p-6">
+    {{ form.hidden_tag() }}
+    <div class="mb-5 flex items-center justify-between">
+      <h2 class="font-display text-xl font-bold text-slate-900 dark:text-white">Новый урок</h2>
+      <button type="button" onclick="document.getElementById('create-schedule-dialog').close()"
+        class="flex min-h-12 min-w-12 items-center justify-center text-2xl text-slate-500 hover:text-slate-700 dark:hover:text-slate-300" aria-label="Закрыть">&times;</button>
+    </div>
+    <div class="space-y-4">
+      <div>
+        {{ form.day_of_week.label(class="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-300") }}
+        {{ form.day_of_week(class="input-cyber") }}
+      </div>
+      <div>
+        {{ form.lesson_number.label(class="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-300") }}
+        {{ form.lesson_number(class="input-cyber") }}
+        {% for error in form.lesson_number.errors %}<p class="mt-1 text-sm font-bold text-rose-600 dark:text-rose-400">{{ error }}</p>{% endfor %}
+      </div>
+      <div>
+        {{ form.subject.label(class="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-300") }}
+        {{ form.subject(class="input-cyber") }}
+        {% for error in form.subject.errors %}<p class="mt-1 text-sm font-bold text-rose-600 dark:text-rose-400">{{ error }}</p>{% endfor %}
+      </div>
+      <div>
+        {{ form.teacher.label(class="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-300") }}
+        {{ form.teacher(class="input-cyber") }}
+      </div>
+      <div>
+        {{ form.room.label(class="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-300") }}
+        {{ form.room(class="input-cyber") }}
+      </div>
+    </div>
+    <div class="mt-6">
+      {{ form.submit(class="btn-cyber w-full") }}
+    </div>
+  </form>
+</dialog>
+
+<dialog id="edit-schedule-dialog"
+  class="glass-panel m-0 w-full max-w-none border-slate-200 bg-white p-0 text-slate-900 backdrop:bg-slate-950/50 dark:border-white/10 dark:bg-[#0b0f1a]/95 dark:text-slate-100 dark:backdrop:bg-slate-950/70 sm:m-auto sm:max-w-md"
+  style="position:fixed; left:0; right:0; bottom:0; top:auto;">
+  <form id="edit-schedule-form" method="post" action="" class="p-6">
+    <div class="mb-5 flex items-center justify-between">
+      <h2 class="font-display text-xl font-bold text-slate-900 dark:text-white">Редактировать урок</h2>
+      <button type="button" onclick="document.getElementById('edit-schedule-dialog').close()"
+        class="flex min-h-12 min-w-12 items-center justify-center text-2xl text-slate-500 hover:text-slate-700 dark:hover:text-slate-300" aria-label="Закрыть">&times;</button>
+    </div>
+    <div class="space-y-4">
+      <div>
+        <label class="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-300">День недели</label>
+        <select name="day_of_week" id="edit-schedule-day" class="input-cyber">
+          {% for day, label in weekday_choices %}<option value="{{ day }}">{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-300">№ урока</label>
+        <input type="number" name="lesson_number" id="edit-schedule-lesson" min="1" max="12" required class="input-cyber">
+      </div>
+      <div>
+        <label class="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-300">Предмет</label>
+        <input type="text" name="subject" id="edit-schedule-subject" required maxlength="120" class="input-cyber">
+      </div>
+      <div>
+        <label class="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-300">Учитель</label>
+        <input type="text" name="teacher" id="edit-schedule-teacher" maxlength="120" class="input-cyber">
+      </div>
+      <div>
+        <label class="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-300">Кабинет</label>
+        <input type="text" name="room" id="edit-schedule-room" maxlength="40" class="input-cyber">
+      </div>
+    </div>
+    <div class="mt-6">
+      <button type="submit" class="btn-cyber w-full">Сохранить</button>
+    </div>
+  </form>
+</dialog>
+{% endif %}
+
+<script>
+  document.querySelectorAll('.schedule-day-tab').forEach((tab) => tab.addEventListener('click', () => {
+    document.querySelectorAll('[data-day-panel]').forEach((panel) => panel.classList.toggle('hidden', panel.dataset.dayPanel !== tab.dataset.day));
+    document.querySelectorAll('.schedule-day-tab').forEach((item) => item.className = 'schedule-day-tab min-h-12 shrink-0 rounded-xl px-3 text-sm font-bold text-slate-500');
+    tab.className = 'schedule-day-tab min-h-12 shrink-0 rounded-xl px-3 text-sm font-bold bg-cyan-100 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300 dark:shadow-[0_0_16px_-6px_rgba(34,211,238,0.7)]';
+  }));
+
+  {% if can_manage %}
+  document.querySelectorAll('.edit-schedule-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var form = document.getElementById('edit-schedule-form');
+      form.action = "{{ url_for('main.edit_schedule_entry_page', entry_id=0) }}".replace('/0/edit', '/' + btn.dataset.id + '/edit');
+      document.getElementById('edit-schedule-day').value = btn.dataset.day;
+      document.getElementById('edit-schedule-lesson').value = btn.dataset.lesson;
+      document.getElementById('edit-schedule-subject').value = btn.dataset.subject;
+      document.getElementById('edit-schedule-teacher').value = btn.dataset.teacher;
+      document.getElementById('edit-schedule-room').value = btn.dataset.room;
+      document.getElementById('edit-schedule-dialog').showModal();
+    });
+  });
+  {% endif %}
+</script>
+{% endblock %}
