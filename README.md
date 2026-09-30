@@ -28,7 +28,7 @@ tests/                # автотесты (pytest) + tests/load (Locust)
 monitoring/           # конфиг Prometheus и alert-правила для локального docker-compose стека
 provisioning/         # datasources/дашборды Grafana для локального docker-compose стека
 docs/                 # troubleshooting-заметки (Patroni/etcd)
-.github/workflows/    # CI/CD пайплайны (ci.yml, build.yml; deploy.yml — legacy, см. ниже)
+.github/workflows/    # CI/CD пайплайны (ci.yml, build.yml, deploy.yml — оба пути деплоя, см. ниже)
 docker-compose.dev.yml      # локальная разработка
 docker-compose.logging.yml  # локальный стек Loki/Promtail/Grafana для логов (не часть прод-деплоя)
 docker-compose.prod.yml     # устаревший docker-стек, в деплое не используется (прод работает на K3s)
@@ -78,25 +78,27 @@ locust -f tests/load/locustfile.py --host=http://localhost:8000 \
 
 ## CI/CD пайплайн
 
-В `.github/workflows/` лежат три workflow. Реально в доставке кода до прода
-участвуют только первые два — деплой выполняется на самой ВМ отдельным
-pull-механизмом (см. ниже):
+В `.github/workflows/` лежат три workflow:
 
 | Workflow | Триггер | Что делает |
 |---|---|---|
 | `ci.yml` (CI) | push в `main`, PR в `main` | линтер (pre-commit) → автотесты (pytest, SQLite) → пробная сборка образа без пуша → уведомление в Telegram |
 | `build.yml` (Build and Push to GHCR) | успешный `ci.yml`, ручной запуск | сборка Docker-образа, пуш в GHCR с тегом `<ветка>-<sha>` (в деплое используется `main-<sha>`); тег `latest` обновляется только на `main` |
-| `deploy.yml` (Deploy to Production VM1) — **legacy, не используется** | успешный `build.yml` | исторический push-деплой по SSH с раннера GitHub на прод-ВМ. Оставлен в репозитории, но нерабочий: раннеры GitHub не могут достучаться до порта 22 этой ВМ (см. диагностику портов/traceroute внутри файла — это следы попыток это обойти). Реальный деплой полностью выполняет `classapp-pull-deploy` на самой ВМ (раздел «Деплой» ниже) |
+| `deploy.yml` (Deploy to Production VM1) | успешный `build.yml` | push-деплой по SSH с раннера GitHub на прод-ВМ: логинится по SSH (обычно 5-10 попыток по таймауту, соединение с этой ВМ с раннеров GitHub нестабильное — отсюда retry/диагностика портов внутри файла) и на самой ВМ запускает `scripts/pull-deploy/deploy-steps.sh` |
 
-Цепочка, которая реально доставляет код: `push в main → CI → build (образ в GHCR) → pull-деплой на ВМ`.
+**Важно:** деплой на прод-ВМ сейчас происходит **двумя независимыми путями
+одновременно** — этим workflow (push по SSH сразу после сборки) и systemd-таймером
+`classapp-pull-deploy` на самой ВМ (пул раз в 2 минуты, раздел «Деплой» ниже).
+Оба в итоге вызывают один и тот же `deploy-steps.sh` для одного и того же
+коммита. Сами k8s-манифесты идемпотентны (`kubectl apply`), поэтому это не
+ломает кластер, но означает дублирующую работу и гонку — какой из двух
+процессов первым захватит `flock`/применит манифесты, тот и «выигрывает»,
+а лог/уведомление о результате приходит от обоих.
 
 ### Необходимые GitHub Secrets
 
-- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — уведомления CI/build/(legacy-)deploy (необязательны)
-
-SSH-секреты (`SSH_HOST`, `SSH_KEY`, `SSH_PORT`) для реального деплоя не нужны —
-он работает pull-моделью. Они по-прежнему требуются только для legacy
-`deploy.yml`, если не удалить этот workflow.
+- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — уведомления CI/build/deploy (необязательны)
+- `SSH_HOST`, `SSH_KEY`, `SSH_PORT` (опционально, по умолчанию 22) — для push-деплоя (`deploy.yml`) по SSH на прод-ВМ
 
 `APP_SECRET_KEY`/`APP_DB_PASSWORD` деплоем не используются: секрет
 `classapp-secrets` создаётся на самой ноде ролью Ansible `bootstrap_secrets`.
@@ -308,17 +310,21 @@ Patroni API `/metrics` и Grafana dashboard с HTTP 5xx, готовностью 
 ### CI/CD и endpoints
 
 После push в `main` `ci.yml` выполняет проверки, `build.yml` публикует образ в
-GHCR. Дальше pull-деплой на ВМ применяет Kubernetes-манифесты, выполняет
-Alembic Job до обновления web Deployment и проверяет rollout.
+GHCR. Дальше манифесты применяются на прод-ВМ — либо через push-деплой
+`deploy.yml` (см. выше), либо через pull-деплой ниже; оба вызывают один и тот
+же `deploy-steps.sh`, который выполняет Alembic Job до обновления web
+Deployment и проверяет rollout.
 
 ### Деплой (pull-модель на ВМ)
 
-Раннеры GitHub Actions не достучались до SSH прод-ВМ (пакеты с их адресов не
-доходят), поэтому деплой выполняется на самой ВМ: systemd-таймер
-`classapp-pull-deploy` каждые 2 минуты проверяет, что в `main` появился новый
-коммит и в GHCR уже опубликован образ `main-<sha>` (то есть CI и build прошли),
-затем применяет манифесты из `k8s/` (etcd, Patroni, Alembic Job, web+nginx),
-проверяет rollout (при сбое — `rollout undo`) и шлёт результат в Telegram.
+Кроме push-деплоя из `deploy.yml` (см. выше), на самой ВМ параллельно работает
+systemd-таймер `classapp-pull-deploy`: каждые 2 минуты проверяет, что в `main`
+появился новый коммит и в GHCR уже опубликован образ `main-<sha>` (то есть CI и
+build прошли), затем применяет манифесты из `k8s/` (etcd, Patroni, Alembic Job,
+web+nginx), проверяет rollout (при сбое — `rollout undo`) и шлёт результат в
+Telegram. Изначально это был единственный работающий путь деплоя (SSH с
+раннеров GitHub был недостижим), поэтому логика на ВМ спроектирована
+самодостаточной — она не пострадает, если push-деплой отключить.
 Скрипты: [scripts/pull-deploy/](scripts/pull-deploy/). Разовая установка на ВМ:
 
 ```bash
