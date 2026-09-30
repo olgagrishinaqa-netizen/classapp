@@ -23,11 +23,15 @@ alembic/              # миграции БД
 terraform/            # IaC: VPC, multi-zone VM и security groups в Yandex Cloud
 ansible/              # роли common, k3s, bootstrap_secrets и monitoring
 k8s/                  # манифесты K3s (etcd, Patroni, web, nginx, HPA, migrate Job)
-tests/                # автотесты (pytest)
-monitoring/           # конфиг Prometheus
-.github/workflows/    # CI/CD пайплайны
-docker-compose.dev.yml    # локальная разработка
-docker-compose.prod.yml   # устаревший docker-стек, в деплое не используется (прод работает на K3s)
+scripts/pull-deploy/  # pull-деплой на ВМ (systemd timer, deploy-steps.sh)
+tests/                # автотесты (pytest) + tests/load (Locust)
+monitoring/           # конфиг Prometheus и alert-правила для локального docker-compose стека
+provisioning/         # datasources/дашборды Grafana для локального docker-compose стека
+docs/                 # troubleshooting-заметки (Patroni/etcd)
+.github/workflows/    # CI/CD пайплайны (ci.yml, build.yml; deploy.yml — legacy, см. ниже)
+docker-compose.dev.yml      # локальная разработка
+docker-compose.logging.yml  # локальный стек Loki/Promtail/Grafana для логов (не часть прод-деплоя)
+docker-compose.prod.yml     # устаревший docker-стек, в деплое не используется (прод работает на K3s)
 ```
 
 ## Запуск локально
@@ -43,8 +47,16 @@ docker compose -f docker-compose.dev.yml up --build
 
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt
-docker run -d --rm -p 5432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=classapp_test postgres:15
 pytest
+```
+
+По умолчанию тесты (48 шт.) используют SQLite (`tests/test_classapp.db`) — так же,
+как и CI (см. ниже), поднимать Postgres для тестов не нужно. Чтобы прогнать тесты
+против настоящего Postgres (ближе к проду), укажите `TEST_DATABASE_URL`:
+
+```bash
+docker run -d --rm -p 5432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=classapp_test postgres:15
+TEST_DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/classapp_test pytest
 ```
 
 ### Нагрузочное тестирование
@@ -66,20 +78,25 @@ locust -f tests/load/locustfile.py --host=http://localhost:8000 \
 
 ## CI/CD пайплайн
 
-Два workflow в `.github/workflows/` (деплой выполняется на самой ВМ, см. ниже):
+В `.github/workflows/` лежат три workflow. Реально в доставке кода до прода
+участвуют только первые два — деплой выполняется на самой ВМ отдельным
+pull-механизмом (см. ниже):
 
 | Workflow | Триггер | Что делает |
 |---|---|---|
-| `ci.yml` (CI) | push в `main`, PR в `main` | линтер (pre-commit) → автотесты (pytest + Postgres-сервис) → пробная сборка образа без пуша → уведомление в Telegram |
+| `ci.yml` (CI) | push в `main`, PR в `main` | линтер (pre-commit) → автотесты (pytest, SQLite) → пробная сборка образа без пуша → уведомление в Telegram |
 | `build.yml` (Build and Push to GHCR) | успешный `ci.yml`, ручной запуск | сборка Docker-образа, пуш в GHCR с тегом `<ветка>-<sha>` (в деплое используется `main-<sha>`); тег `latest` обновляется только на `main` |
+| `deploy.yml` (Deploy to Production VM1) — **legacy, не используется** | успешный `build.yml` | исторический push-деплой по SSH с раннера GitHub на прод-ВМ. Оставлен в репозитории, но нерабочий: раннеры GitHub не могут достучаться до порта 22 этой ВМ (см. диагностику портов/traceroute внутри файла — это следы попыток это обойти). Реальный деплой полностью выполняет `classapp-pull-deploy` на самой ВМ (раздел «Деплой» ниже) |
 
-Цепочка: `push в main → CI → build (образ в GHCR) → pull-деплой на ВМ`.
+Цепочка, которая реально доставляет код: `push в main → CI → build (образ в GHCR) → pull-деплой на ВМ`.
 
 ### Необходимые GitHub Secrets
 
-- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — уведомления CI/build (необязательны)
+- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — уведомления CI/build/(legacy-)deploy (необязательны)
 
-SSH-секреты (`SSH_HOST`, `SSH_KEY`) больше не нужны: раннеры GitHub не могут достучаться до порта 22 ВМ, поэтому деплой сделан pull-моделью.
+SSH-секреты (`SSH_HOST`, `SSH_KEY`, `SSH_PORT`) для реального деплоя не нужны —
+он работает pull-моделью. Они по-прежнему требуются только для legacy
+`deploy.yml`, если не удалить этот workflow.
 
 `APP_SECRET_KEY`/`APP_DB_PASSWORD` деплоем не используются: секрет
 `classapp-secrets` создаётся на самой ноде ролью Ansible `bootstrap_secrets`.
@@ -88,9 +105,10 @@ SSH-секреты (`SSH_HOST`, `SSH_KEY`) больше не нужны: ран�
 ## Развертывание инфраструктуры с нуля (IaC)
 
 Каноническая IaC-конфигурация находится в `terraform/`. Она создает VPC с
-подсетями в `ru-central1-a`, `ru-central1-b` и `ru-central1-c`, VM для K3s
-control-plane/worker и security group. В outputs доступны внешние и внутренние
-IP-адреса каждой ноды.
+подсетями в `ru-central1-a`, `ru-central1-b` и `ru-central1-d` (зона
+`ru-central1-c` сейчас в статусе DOWN у провайдера, подсеть перенесена на
+`-d`), VM для K3s control-plane/worker и security group. В outputs доступны
+внешние и внутренние IP-адреса каждой ноды.
 
 Один и тот же код работает в двух режимах — переключение только через tfvars,
 дублировать инфраструктурный код не нужно:
@@ -255,9 +273,10 @@ kubectl get endpoints classapp-db-master  # должен быть непуст
 
 ### Масштабируемость
 
-`classapp-web` и `classapp-nginx` разворачиваются в нескольких репликах
-(3 и 2 соответственно), балансировка между ними обеспечивается штатными
-Kubernetes Service (`classapp-web-service`, NodePort `classapp-nginx`).
+`classapp-web` разворачивается в нескольких репликах (3, до 5 по HPA);
+балансировка между ними обеспечивается штатным Kubernetes Service
+(`classapp-web-service`). `classapp-nginx` (NodePort, `:30080`) сейчас в
+одной реплике — точка входа не размножена, только backend за ней.
 Дополнительно `k8s/hpa.yaml` объявляет `HorizontalPodAutoscaler` для
 `classapp-web` (2–5 реплик по CPU, порог 70%) — работает из коробки, т.к.
 K3s поставляется с `metrics-server` по умолчанию.
@@ -289,9 +308,8 @@ Patroni API `/metrics` и Grafana dashboard с HTTP 5xx, готовностью 
 ### CI/CD и endpoints
 
 После push в `main` `ci.yml` выполняет проверки, `build.yml` публикует образ в
-GHCR, а `build.yml` публикует образ в GHCR. Дальше pull-деплой на ВМ применяет
-Kubernetes-манифесты, выполняет Alembic Job до обновления web Deployment и
-проверяет rollout.
+GHCR. Дальше pull-деплой на ВМ применяет Kubernetes-манифесты, выполняет
+Alembic Job до обновления web Deployment и проверяет rollout.
 
 ### Деплой (pull-модель на ВМ)
 
