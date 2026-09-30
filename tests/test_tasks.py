@@ -1,3 +1,5 @@
+from datetime import date
+
 from app.models import Task, User
 
 
@@ -67,6 +69,49 @@ def test_non_admin_cannot_create_task(client, db):
     )
     assert response.status_code == 302
     assert Task.query.filter_by(title="Попытка родителя").count() == 0
+
+
+def test_admin_can_set_task_priority(client, db):
+    _login_admin(client)
+    response = client.post(
+        "/tasks",
+        data={"title": "Срочное дело", "priority": "high"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    task = Task.query.filter_by(title="Срочное дело").one()
+    assert task.priority == "high"
+
+
+def test_task_without_priority_field_defaults_to_medium(client, db):
+    _login_admin(client)
+    client.post("/tasks", data={"title": "Без явного приоритета"}, follow_redirects=False)
+    task = Task.query.filter_by(title="Без явного приоритета").one()
+    assert task.priority == "medium"
+
+
+def test_active_tasks_are_sorted_by_priority_then_nearest_deadline(client, db):
+    _login_admin(client)
+    db.session.add_all(
+        [
+            Task(title="A: низкий, без дедлайна", priority="low"),
+            Task(title="B: высокий, дедлайн далеко", priority="high", deadline=date(2027, 1, 1)),
+            Task(title="C: высокий, дедлайн скоро", priority="high", deadline=date(2026, 10, 1)),
+            Task(title="D: средний, без дедлайна", priority="medium"),
+        ]
+    )
+    db.session.commit()
+
+    page = client.get("/tasks")
+    body = page.data.decode()
+    pos_c = body.index("C: высокий, дедлайн скоро")
+    pos_b = body.index("B: высокий, дедлайн далеко")
+    pos_d = body.index("D: средний, без дедлайна")
+    pos_a = body.index("A: низкий, без дедлайна")
+
+    # Внутри приоритета "высокий" ближайший дедлайн должен идти первым,
+    # а сам "высокий" приоритет — раньше "среднего" и "низкого".
+    assert pos_c < pos_b < pos_d < pos_a
 
 
 def test_api_create_task_accepts_deadline(client, db):

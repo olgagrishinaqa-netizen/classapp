@@ -3,7 +3,7 @@
 
 import json
 import os
-from datetime import datetime
+from datetime import date, datetime
 from functools import wraps
 from uuid import uuid4
 
@@ -188,8 +188,20 @@ def task_json(task):
         "deadline": task.deadline.strftime("%Y-%m-%d") if task.deadline else None,
         "status": task.status,
         "status_label": STATUS_LABELS[task.status],
+        "priority": task.priority,
         "created_at": task.created_at.strftime("%d.%m.%Y"),
     }
+
+
+PRIORITY_ORDER = {"high": 0, "medium": 1, "low": 2}
+
+
+def _task_sort_key(task):
+    """Сортировка активных задач: сначала по приоритету (высокий → низкий),
+    внутри одного приоритета — по ближайшему дедлайну (без дедлайна — в конце)."""
+    priority_rank = PRIORITY_ORDER.get(task.priority, 1)
+    deadline_rank = task.deadline or date.max
+    return (priority_rank, deadline_rank)
 
 
 def news_json(news):
@@ -1051,6 +1063,7 @@ def tasks_page():
                     title=form.title.data.strip(),
                     description=(form.description.data or "").strip(),
                     deadline=form.deadline.data,
+                    priority=form.priority.data,
                 )
             )
             db.session.commit()
@@ -1060,6 +1073,7 @@ def tasks_page():
             flash("Проверьте правильность заполнения формы.", "error")
 
     active_tasks = Task.query.filter(Task.status != "done").order_by(Task.created_at.desc()).all()
+    active_tasks = sorted(active_tasks, key=_task_sort_key)
     completed_tasks = Task.query.filter(Task.status == "done").order_by(Task.created_at.desc()).all()
     return render_template(
         "tasks.html",

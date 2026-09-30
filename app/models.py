@@ -123,13 +123,15 @@ class Expense(db.Model):
 
 
 class Task(db.Model):
-    """Задача/поручение класса со статусом created/in_progress/done."""
+    """Задача/поручение класса со статусом created/in_progress/done и
+    приоритетом low/medium/high (влияет на сортировку активных задач)."""
 
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(180), nullable=False)
     description = db.Column(db.Text, default="")
     deadline = db.Column(db.Date, nullable=True)
     status = db.Column(db.String(20), nullable=False, default="created")
+    priority = db.Column(db.String(10), nullable=False, default="medium")
     created_at = db.Column(db.DateTime, default=local_now, nullable=False)
 
 

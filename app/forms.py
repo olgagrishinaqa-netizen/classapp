@@ -107,6 +107,11 @@ class TaskForm(FlaskForm):
     )
     description = TextAreaField("Описание", validators=[Optional()])
     deadline = DateField("Дедлайн", validators=[Optional()], format="%Y-%m-%d")
+    priority = SelectField(
+        "Приоритет",
+        choices=[("high", "Высокий"), ("medium", "Средний"), ("low", "Низкий")],
+        default="medium",
+    )
     submit = SubmitField("Создать задачу")
 
 
