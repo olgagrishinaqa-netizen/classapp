@@ -136,22 +136,45 @@ class Task(db.Model):
 
 
 class News(db.Model):
-    """Новость с черновым/опубликованным статусом и опциональной картинкой."""
+    """Новость с черновым/опубликованным статусом и несколькими картинками."""
 
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text, nullable=False, default="")
     status = db.Column(db.String(20), nullable=False, default="draft")
-    image_name = db.Column(db.String(255))
-    image_path = db.Column(db.String(255))
     created_at = db.Column(db.DateTime, default=local_now, nullable=False)
     updated_at = db.Column(db.DateTime, default=local_now, onupdate=local_now, nullable=False)
+    images = db.relationship(
+        "NewsImage",
+        backref="news",
+        cascade="all, delete-orphan",
+        order_by="NewsImage.position, NewsImage.id",
+    )
+
+    @property
+    def image_urls(self):
+        return [image.url for image in self.images]
 
     @property
     def image_url(self):
-        if not self.image_path:
-            return None
-        return f"/uploads/{self.image_path}"
+        """URL первой картинки (обложка) либо None."""
+        return self.images[0].url if self.images else None
+
+
+class NewsImage(db.Model):
+    """Изображение, прикреплённое к новости."""
+
+    __tablename__ = "news_image"
+
+    id = db.Column(db.Integer, primary_key=True)
+    news_id = db.Column(db.Integer, db.ForeignKey("news.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = db.Column(db.String(255))
+    path = db.Column(db.String(255), nullable=False)
+    position = db.Column(db.Integer, nullable=False, default=0)
+
+    @property
+    def url(self):
+        return f"/uploads/{self.path}"
 
 
 class ScheduleEntry(db.Model):

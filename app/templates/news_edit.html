@@ -5,14 +5,21 @@
 <form method="post" enctype="multipart/form-data" class="glass-card p-5" novalidate>
   {{ form.hidden_tag() }}
   <div class="space-y-4">
-    {% for field in [form.title, form.description, form.image, form.status] %}
+    {% for field in [form.title, form.description, form.images, form.status] %}
       <div>
         {{ field.label(class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300") }}
-        {% if field.name == "image" and news_item.image_url %}
-          <img src="{{ news_item.image_url }}" alt="" class="mb-2 max-h-48 w-full rounded-xl object-cover">
-          <p class="mb-2 text-xs text-slate-400 dark:text-slate-500">Текущее изображение. Выберите новый файл, чтобы заменить его.</p>
+        {% if field.name == "images" and news_item.images %}
+          <div class="mb-3 grid grid-cols-3 gap-2">
+            {% for image in news_item.images %}
+            <label class="block text-xs text-slate-500 dark:text-slate-400">
+              <img src="{{ image.url }}" alt="" class="h-24 w-full rounded-xl object-cover">
+              <span class="mt-1 flex items-center gap-1"><input type="checkbox" name="remove_images" value="{{ image.id }}"> Удалить</span>
+            </label>
+            {% endfor %}
+          </div>
+          <p class="mb-2 text-xs text-slate-400 dark:text-slate-500">Отметьте изображения для удаления или выберите новые файлы, чтобы добавить их.</p>
         {% endif %}
-        {{ field(class="input-cyber" if field.name != "image" else "block w-full text-sm text-slate-500 file:mr-3 file:min-h-12 file:rounded-xl file:border-0 file:bg-cyan-50 file:px-4 file:text-sm file:font-bold file:text-cyan-700 dark:text-slate-400 dark:file:bg-cyan-500/15 dark:file:text-cyan-300") }}
+        {{ field(class="input-cyber" if field.name != "images" else "block w-full text-sm text-slate-500 file:mr-3 file:min-h-12 file:rounded-xl file:border-0 file:bg-cyan-50 file:px-4 file:text-sm file:font-bold file:text-cyan-700 dark:text-slate-400 dark:file:bg-cyan-500/15 dark:file:text-cyan-300", multiple=True, accept="image/jpeg,image/png,image/webp") if field.name == "images" else field(class="input-cyber") }}
         {% for error in field.errors %}<p class="mt-2 text-sm font-medium text-rose-600 dark:text-rose-400">{{ error }}</p>{% endfor %}
       </div>
     {% endfor %}

@@ -4,7 +4,7 @@
 from decimal import Decimal
 
 from flask_wtf import FlaskForm
-from flask_wtf.file import FileAllowed, FileField
+from flask_wtf.file import FileAllowed, FileField, MultipleFileField
 from wtforms import (
     DateField,
     DecimalField,
@@ -83,8 +83,8 @@ class NewsForm(FlaskForm):
 
     title = StringField("Заголовок", validators=[DataRequired(), Length(max=200)])
     description = TextAreaField("Текст новости", validators=[DataRequired()])
-    image = FileField(
-        "Изображение",
+    images = MultipleFileField(
+        "Изображения",
         validators=[FileAllowed(["jpg", "jpeg", "png", "webp"], "Допустимы JPG, PNG или WEBP.")],
     )
     status = SelectField(

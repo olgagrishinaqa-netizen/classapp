@@ -15,10 +15,10 @@
   <h2 class="mb-4 font-display text-lg font-bold text-slate-900 dark:text-white">Новое событие</h2>
   {{ form.hidden_tag() }}
   <div class="space-y-4">
-    {% for field in [form.title, form.description, form.image, form.status] %}
+    {% for field in [form.title, form.description, form.images, form.status] %}
       <div>
         {{ field.label(class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300") }}
-        {{ field(class="input-cyber" if field.name != "image" else "block w-full text-sm text-slate-500 file:mr-3 file:min-h-12 file:rounded-xl file:border-0 file:bg-cyan-50 file:px-4 file:text-sm file:font-bold file:text-cyan-700 dark:text-slate-400 dark:file:bg-cyan-500/15 dark:file:text-cyan-300") }}
+        {{ field(class="input-cyber" if field.name != "images" else "block w-full text-sm text-slate-500 file:mr-3 file:min-h-12 file:rounded-xl file:border-0 file:bg-cyan-50 file:px-4 file:text-sm file:font-bold file:text-cyan-700 dark:text-slate-400 dark:file:bg-cyan-500/15 dark:file:text-cyan-300", multiple=True, accept="image/jpeg,image/png,image/webp") if field.name == "images" else field(class="input-cyber") }}
         {% for error in field.errors %}<p class="mt-2 text-sm font-medium text-rose-600 dark:text-rose-400">{{ error }}</p>{% endfor %}
       </div>
     {% endfor %}
@@ -27,7 +27,7 @@
 </form>
 {% endif %}
 <section class="space-y-4">{% for item in news_items %}
-  <article class="glass-card relative overflow-hidden p-5">
+  <article id="news-{{ item.id }}" class="glass-card relative overflow-hidden p-5">
     <div class="absolute left-0 top-5 h-8 w-1 rounded-r-full bg-fuchsia-400/70 dark:shadow-[0_0_12px_2px_rgba(217,70,239,0.6)]"></div>
     <div class="flex items-start justify-between gap-3 pl-3">
       <div>
@@ -36,7 +36,8 @@
       </div>
       {% if item.status == 'draft' %}<span class="badge-medium shrink-0">Черновик</span>{% endif %}
     </div>
-    {% if item.image_url %}<img src="{{ item.image_url }}" alt="" class="mt-3 max-h-72 w-full rounded-2xl object-cover">{% endif %}
+    {% if item.images|length == 1 %}<img src="{{ item.image_url }}" alt="" loading="lazy" class="mt-3 max-h-72 w-full rounded-2xl object-cover">
+    {% elif item.images %}<div class="mt-3 flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1">{% for image in item.images %}<img src="{{ image.url }}" alt="" loading="lazy" class="h-56 w-4/5 shrink-0 snap-center rounded-2xl object-cover">{% endfor %}</div>{% endif %}
     <p class="mt-3 whitespace-pre-line pl-3 text-sm leading-6 text-slate-600 dark:text-slate-300">{{ item.description }}</p>
     <p class="mt-4 pl-3 text-xs text-slate-400 dark:text-slate-500">Автор: Администратор класса</p>
     {% if current_user.is_admin and active_role == 'admin' %}

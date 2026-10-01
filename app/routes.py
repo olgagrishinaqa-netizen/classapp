@@ -46,6 +46,7 @@ from .models import (
     ExpenseReport,
     GeneralInfo,
     News,
+    NewsImage,
     Payment,
     ScheduleEntry,
     Student,
@@ -61,6 +62,7 @@ ROLE_LABELS = {"parent": "Родитель", "student": "Ученик", "admin":
 ALLOWED_RECEIPT_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "pdf"}
 ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 ALLOWED_GENERAL_INFO_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "pdf", "doc", "docx", "xls", "xlsx"}
+MAX_NEWS_IMAGES = 10
 WEEKDAY_LABELS = dict(WEEKDAY_CHOICES)
 
 
@@ -114,6 +116,57 @@ def _save_uploaded_file(
     os.makedirs(destination_folder, exist_ok=True)
     file_storage.save(os.path.join(destination_folder, stored_name))
     return stored_name, None
+
+
+def _upload_folder():
+    return current_app.config.get("UPLOAD_FOLDER", os.path.join(os.getcwd(), "uploads"))
+
+
+def _attach_news_images(news_item, files):
+    """Сохраняет загруженные файлы и прикрепляет их к новости (в сессию).
+    Возвращает сообщение об ошибке либо None. Файлы, записанные до ошибки,
+    удаляются, чтобы не оставлять сирот на диске."""
+    files = [f for f in files if f and f.filename]
+    if len(news_item.images) + len(files) > MAX_NEWS_IMAGES:
+        return f"К новости можно прикрепить не более {MAX_NEWS_IMAGES} изображений."
+    saved = []
+    next_position = max((image.position for image in news_item.images), default=-1) + 1
+    for file_storage in files:
+        stored_name, error = _save_uploaded_file(
+            file_storage,
+            allowed_extensions=ALLOWED_IMAGE_EXTENSIONS,
+            destination_folder=_upload_folder(),
+            field_error_message="Допустимы JPG, PNG или WEBP.",
+        )
+        if error:
+            for name in saved:
+                _remove_uploaded_file(name)
+            return error
+        saved.append(stored_name)
+        news_item.images.append(
+            NewsImage(name=secure_filename(file_storage.filename), path=stored_name, position=next_position)
+        )
+        next_position += 1
+    return None
+
+
+def _remove_uploaded_file(stored_name):
+    try:
+        os.remove(os.path.join(_upload_folder(), stored_name))
+    except OSError:
+        pass
+
+
+def _remove_news_images(news_item, image_ids):
+    """Открепляет выбранные картинки от новости. Возвращает имена файлов,
+    которые нужно удалить с диска после успешного commit."""
+    ids = {int(i) for i in image_ids if str(i).isdigit()}
+    removed = []
+    for image in list(news_item.images):
+        if image.id in ids:
+            news_item.images.remove(image)
+            removed.append(image.path)
+    return removed
 
 
 def auth_required(view):
@@ -212,6 +265,7 @@ def news_json(news):
         "description": news.description or "",
         "status": news.status,
         "image_url": news.image_url,
+        "image_urls": news.image_urls,
         "created_at": news.created_at.strftime("%d.%m.%Y %H:%M"),
         "updated_at": news.updated_at.strftime("%d.%m.%Y %H:%M"),
     }
@@ -290,6 +344,14 @@ def dashboard_page():
 
     active_task_count = Task.query.filter(Task.status != "done").count()
     latest_news = News.query.filter_by(status="published").order_by(News.created_at.desc()).first()
+    gallery_news = (
+        News.query.filter_by(status="published")
+        .filter(News.images.any())
+        .order_by(News.created_at.desc())
+        .limit(6)
+        .all()
+    )
+    gallery = [(item, image) for item in gallery_news for image in item.images][:12]
     month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     monthly_expenses = float(
         db.session.query(db.func.coalesce(db.func.sum(Expense.amount), 0))
@@ -305,6 +367,7 @@ def dashboard_page():
         active_task_count=active_task_count,
         monthly_expenses=monthly_expenses,
         latest_news=latest_news,
+        gallery=gallery,
     )
 
 
@@ -320,29 +383,16 @@ def news_page():
         if not can_manage:
             flash("Публиковать новости может только администратор.", "error")
         else:
-            image_name = None
-            image_path = None
-            image = form.image.data
-            if image and image.filename:
-                upload_folder = current_app.config.get("UPLOAD_FOLDER", os.path.join(os.getcwd(), "uploads"))
-                image_path, image_error = _save_uploaded_file(
-                    image,
-                    allowed_extensions=ALLOWED_IMAGE_EXTENSIONS,
-                    destination_folder=upload_folder,
-                    field_error_message="Допустимы JPG, PNG или WEBP.",
-                )
-                if image_error:
-                    form.image.errors.append(image_error)
-            if not form.image.errors:
-                db.session.add(
-                    News(
-                        title=form.title.data.strip(),
-                        description=form.description.data.strip(),
-                        status=form.status.data,
-                        image_name=(secure_filename(image.filename) if image and image.filename else None),
-                        image_path=image_path,
-                    )
-                )
+            news_item = News(
+                title=form.title.data.strip(),
+                description=form.description.data.strip(),
+                status=form.status.data,
+            )
+            image_error = _attach_news_images(news_item, form.images.data or [])
+            if image_error:
+                form.images.errors.append(image_error)
+            else:
+                db.session.add(news_item)
                 db.session.commit()
                 flash("Новость сохранена.", "success")
                 return redirect(url_for("main.news_page"))
@@ -373,8 +423,11 @@ def delete_news_page(news_id):
     if not news_item:
         flash("Новость не найдена.", "error")
     else:
+        stored_names = [image.path for image in news_item.images]
         db.session.delete(news_item)
         db.session.commit()
+        for name in stored_names:
+            _remove_uploaded_file(name)
         flash("Новость удалена.", "success")
     return redirect(url_for("main.news_page"))
 
@@ -391,28 +444,22 @@ def edit_news_page(news_id):
     if not news_item:
         flash("Новость не найдена.", "error")
         return redirect(url_for("main.news_page"))
-    form = NewsForm(obj=news_item)
+    form = NewsForm(
+        data={"title": news_item.title, "description": news_item.description, "status": news_item.status}
+    )
     if form.validate_on_submit():
-        image = form.image.data
-        image_path = None
-        if image and image.filename:
-            upload_folder = current_app.config.get("UPLOAD_FOLDER", os.path.join(os.getcwd(), "uploads"))
-            image_path, image_error = _save_uploaded_file(
-                image,
-                allowed_extensions=ALLOWED_IMAGE_EXTENSIONS,
-                destination_folder=upload_folder,
-                field_error_message="Допустимы JPG, PNG или WEBP.",
-            )
-            if image_error:
-                form.image.errors.append(image_error)
-        if not form.image.errors:
+        removed_files = _remove_news_images(news_item, request.form.getlist("remove_images"))
+        image_error = _attach_news_images(news_item, form.images.data or [])
+        if image_error:
+            db.session.rollback()
+            form.images.errors.append(image_error)
+        else:
             news_item.title = form.title.data.strip()
             news_item.description = form.description.data.strip()
             news_item.status = form.status.data
-            if image_path:
-                news_item.image_name = secure_filename(image.filename)
-                news_item.image_path = image_path
             db.session.commit()
+            for name in removed_files:
+                _remove_uploaded_file(name)
             flash("Новость обновлена.", "success")
             return redirect(url_for("main.news_page"))
     return render_template(
@@ -1387,22 +1434,10 @@ def create_news():
     if status not in {"draft", "published"}:
         return jsonify(error="Некорректный статус новости"), 400
 
-    image = request.files.get("image") if hasattr(request, "files") else None
-    image_name = None
-    image_path = None
-    if image and image.filename:
-        upload_folder = current_app.config.get("UPLOAD_FOLDER", os.path.join(os.getcwd(), "uploads"))
-        image_path, image_error = _save_uploaded_file(
-            image,
-            allowed_extensions=ALLOWED_IMAGE_EXTENSIONS,
-            destination_folder=upload_folder,
-            field_error_message="Допустимы JPG, PNG или WEBP.",
-        )
-        if image_error:
-            return jsonify(error=image_error), 400
-        image_name = secure_filename(image.filename)
-
-    news_item = News(title=title, description=description, status=status, image_name=image_name, image_path=image_path)
+    news_item = News(title=title, description=description, status=status)
+    image_error = _attach_news_images(news_item, request.files.getlist("image") + request.files.getlist("images"))
+    if image_error:
+        return jsonify(error=image_error), 400
     db.session.add(news_item)
     db.session.commit()
     return jsonify(news=news_json(news_item)), 201
@@ -1423,21 +1458,14 @@ def update_news(news_id):
     if "status" in data and str(data.get("status") or "").strip() in {"draft", "published"}:
         news_item.status = str(data["status"]).strip()
 
-    image = request.files.get("image") if hasattr(request, "files") else None
-    if image and image.filename:
-        upload_folder = current_app.config.get("UPLOAD_FOLDER", os.path.join(os.getcwd(), "uploads"))
-        image_path, image_error = _save_uploaded_file(
-            image,
-            allowed_extensions=ALLOWED_IMAGE_EXTENSIONS,
-            destination_folder=upload_folder,
-            field_error_message="Допустимы JPG, PNG или WEBP.",
-        )
-        if image_error:
-            return jsonify(error=image_error), 400
-        news_item.image_name = secure_filename(image.filename)
-        news_item.image_path = image_path
-
+    removed_files = _remove_news_images(news_item, data.getlist("remove_images") if hasattr(data, "getlist") else [])
+    image_error = _attach_news_images(news_item, request.files.getlist("image") + request.files.getlist("images"))
+    if image_error:
+        db.session.rollback()
+        return jsonify(error=image_error), 400
     db.session.commit()
+    for name in removed_files:
+        _remove_uploaded_file(name)
     return jsonify(news=news_json(news_item))
 
 
