@@ -50,6 +50,17 @@ data:
       "schemaVersion": 38,
       "version": 1,
       "refresh": "15s",
+      "annotations": {
+        "list": [
+          {
+            "name": "Деплои",
+            "enable": true,
+            "iconColor": "purple",
+            "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+            "target": {"type": "tags", "tags": ["deploy"], "limit": 100}
+          }
+        ]
+      },
       "panels": [
         {
           "type": "timeseries",

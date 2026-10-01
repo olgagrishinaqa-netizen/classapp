@@ -96,7 +96,28 @@ for i in $(seq 1 15); do
   sleep 4
 done
 
-echo "ШАГ 8: очистка"
+echo "ШАГ 8: аннотация деплоя в Grafana (необязательный шаг, ошибки не критичны)"
+# Вертикальная метка «деплой» на графиках дашбордов. Пароль берётся из секрета
+# classapp-grafana, Grafana доступна на ноде по NodePort 30300.
+(
+  set +e
+  GRAFANA_URL="${GRAFANA_URL:-http://127.0.0.1:30300}"
+  GF_USER="$($KUBE get secret classapp-grafana -n monitoring -o jsonpath='{.data.admin-user}' 2>/dev/null | base64 -d)"
+  GF_PASS="$($KUBE get secret classapp-grafana -n monitoring -o jsonpath='{.data.admin-password}' 2>/dev/null | base64 -d)"
+  if [ -z "$GF_USER" ] || [ -z "$GF_PASS" ]; then
+    echo "секрет classapp-grafana не найден, аннотацию пропускаем"
+    exit 0
+  fi
+  PAYLOAD="$(COMMIT_SHA="$COMMIT_SHA" python3 -c 'import json,os; sha=os.environ["COMMIT_SHA"]; print(json.dumps({"text": "Деплой classapp " + sha[:7], "tags": ["deploy", "classapp"]}))')"
+  if curl -fsS --max-time 10 -u "${GF_USER}:${GF_PASS}" -H 'Content-Type: application/json' \
+      -d "$PAYLOAD" "${GRAFANA_URL}/api/annotations" >/dev/null 2>&1; then
+    echo "аннотация деплоя ${COMMIT_SHA:0:7} добавлена"
+  else
+    echo "Grafana недоступна, аннотацию пропускаем"
+  fi
+) || true
+
+echo "ШАГ 9: очистка"
 journalctl --vacuum-time=7d >/dev/null 2>&1 || true
 if k3s crictl images >/dev/null 2>&1; then
   UNREF="$(k3s crictl images -q --unreferenced || true)"
