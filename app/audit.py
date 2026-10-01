@@ -41,15 +41,45 @@ def mask_phone(phone):
     return f"***{digits[-4:]}" if digits else None
 
 
+PERSISTED_EVENTS = {"login_success", "login_failed", "logout", "register", "register_rejected"}
+
+
+def _store_event(event, ip, user_agent, fields):
+    """Сохраняет событие в БД для страницы «Журнал входов». Сбой записи не
+    должен ломать вход пользователя: ошибка только логируется."""
+    from .extensions import db
+    from .models import LoginEvent
+
+    try:
+        db.session.add(
+            LoginEvent(
+                event=event,
+                user_id=fields.get("user_id"),
+                phone=fields.get("phone"),
+                ip=ip,
+                user_agent=user_agent,
+                channel=fields.get("channel"),
+                reason=fields.get("reason"),
+            )
+        )
+        db.session.commit()
+    except Exception:  # noqa: BLE001 - журнал не должен ломать запрос
+        db.session.rollback()
+        current_app.logger.exception("Не удалось сохранить событие %s в login_event", event)
+
+
 def audit(event, **fields):
-    """Пишет событие аудита в лог приложения."""
+    """Пишет событие аудита в лог приложения (и в БД для событий входа)."""
+    user_agent = (request.user_agent.string or "")[:200]
+    if event in PERSISTED_EVENTS:
+        _store_event(event, client_ip(), user_agent, fields)
     current_app.logger.info(
         "audit: %s",
         event,
         extra={
             "event": event,
             "ip": client_ip(),
-            "user_agent": (request.user_agent.string or "")[:200],
+            "user_agent": user_agent,
             **fields,
         },
     )
@@ -89,3 +119,39 @@ def register_request_audit(app):
             status=response.status_code,
         )
         return response
+
+
+def describe_device(user_agent):
+    """Короткое описание устройства по User-Agent: «Android · Chrome»."""
+    ua = user_agent or ""
+    system = next(
+        (
+            name
+            for marker, name in (
+                ("Android", "Android"),
+                ("iPhone", "iPhone"),
+                ("iPad", "iPad"),
+                ("Windows", "Windows"),
+                ("Macintosh", "macOS"),
+                ("Linux", "Linux"),
+            )
+            if marker in ua
+        ),
+        None,
+    )
+    browser = next(
+        (
+            name
+            for marker, name in (
+                ("Edg/", "Edge"),
+                ("OPR/", "Opera"),
+                ("YaBrowser", "Яндекс Браузер"),
+                ("Firefox/", "Firefox"),
+                ("Chrome/", "Chrome"),
+                ("Safari/", "Safari"),
+            )
+            if marker in ua
+        ),
+        None,
+    )
+    return " · ".join(part for part in (system, browser) if part) or "Неизвестное устройство"

@@ -68,6 +68,7 @@
 <div class="mt-4 grid gap-3">
   <a href="{{ url_for('main.users_page') }}" class="btn-ghost justify-between px-5">Управление пользователями <span>→</span></a>
   <a href="{{ url_for('main.admin_students_page') }}" class="btn-ghost justify-between px-5">Состав класса <span>→</span></a>
+  {% if active_role == 'admin' %}<a href="{{ url_for('main.login_log_page') }}" class="btn-ghost justify-between px-5">Журнал входов <span>→</span></a>{% endif %}
 </div>
 {% endif %}
 {% endblock %}

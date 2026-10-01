@@ -3,7 +3,7 @@
 
 import json
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from functools import wraps
 from uuid import uuid4
 
@@ -23,7 +23,7 @@ from sqlalchemy import case, or_
 from sqlalchemy.exc import IntegrityError
 from werkzeug.utils import secure_filename
 
-from .audit import REGISTRATIONS, audit, audit_login, mask_phone
+from .audit import REGISTRATIONS, audit, audit_login, describe_device, mask_phone
 from .extensions import db
 from .forms import (
     BellScheduleEntryForm,
@@ -46,6 +46,7 @@ from .models import (
     Expense,
     ExpenseReport,
     GeneralInfo,
+    LoginEvent,
     News,
     NewsImage,
     Payment,
@@ -756,6 +757,79 @@ def edit_general_info_page(info_id):
         active_role=active_role,
         form=form,
         item=item,
+    )
+
+
+LOGIN_LOG_FILTERS = {
+    "success": ("login_success",),
+    "failed": ("login_failed",),
+    "logout": ("logout",),
+    "register": ("register", "register_rejected"),
+}
+LOGIN_EVENT_LABELS = {
+    "login_success": "Вход",
+    "login_failed": "Неудачный вход",
+    "logout": "Выход",
+    "register": "Регистрация",
+    "register_rejected": "Регистрация отклонена",
+}
+LOGIN_REASON_LABELS = {"bad_password": "неверный пароль", "unknown_user": "номер не найден", "phone_exists": "номер уже занят"}
+
+
+@bp.get("/admin/login-log")
+def login_log_page():
+    user, active_role = page_user()
+    if not user:
+        return redirect(url_for("main.login_page"))
+    if not user.is_admin or active_role != "admin":
+        flash("Журнал входов доступен только администратору.", "error")
+        return redirect(url_for("main.dashboard_page"))
+
+    selected = request.args.get("filter", "")
+    query = LoginEvent.query.order_by(LoginEvent.created_at.desc(), LoginEvent.id.desc())
+    if selected in LOGIN_LOG_FILTERS:
+        query = query.filter(LoginEvent.event.in_(LOGIN_LOG_FILTERS[selected]))
+    page = request.args.get("page", 1, type=int)
+    pagination = query.paginate(page=max(page, 1), per_page=30, error_out=False)
+
+    user_ids = {event.user_id for event in pagination.items if event.user_id}
+    names = {u.id: u.full_name for u in User.query.filter(User.id.in_(user_ids)).all()} if user_ids else {}
+
+    since = local_now() - timedelta(hours=24)
+    recent = LoginEvent.query.filter(LoginEvent.created_at >= since)
+    stats = {
+        "success": recent.filter_by(event="login_success").count(),
+        "failed": recent.filter_by(event="login_failed").count(),
+        "users": (
+            db.session.query(db.func.count(db.distinct(LoginEvent.user_id)))
+            .filter(LoginEvent.created_at >= since, LoginEvent.event == "login_success")
+            .scalar()
+            or 0
+        ),
+    }
+    rows = [
+        {
+            "time": event.created_at,
+            "label": LOGIN_EVENT_LABELS.get(event.event, event.event),
+            "kind": event.event,
+            "name": names.get(event.user_id) or ("удалённый пользователь" if event.user_id else None),
+            "phone": event.phone,
+            "ip": event.ip,
+            "device": describe_device(event.user_agent),
+            "channel": event.channel,
+            "reason": LOGIN_REASON_LABELS.get(event.reason, event.reason),
+        }
+        for event in pagination.items
+    ]
+    return render_template(
+        "login_log.html",
+        user=user,
+        current_user=user,
+        active_role=active_role,
+        rows=rows,
+        pagination=pagination,
+        selected=selected,
+        stats=stats,
     )
 
 

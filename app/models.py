@@ -177,6 +177,23 @@ class NewsImage(db.Model):
         return f"/uploads/{self.path}"
 
 
+class LoginEvent(db.Model):
+    """Журнал входов/выходов/регистраций для страницы администратора.
+    user_id без внешнего ключа: история сохраняется после удаления пользователя."""
+
+    __tablename__ = "login_event"
+
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, default=local_now, nullable=False, index=True)
+    event = db.Column(db.String(30), nullable=False, index=True)
+    user_id = db.Column(db.Integer, index=True)
+    phone = db.Column(db.String(20))  # замаскирован: ***1234
+    ip = db.Column(db.String(64))
+    user_agent = db.Column(db.String(255))
+    channel = db.Column(db.String(10))
+    reason = db.Column(db.String(30))
+
+
 class ScheduleEntry(db.Model):
     """Урок в недельном расписании класса. Управление доступно только
     администратору, остальные пользователи — только просмотр."""

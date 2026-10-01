@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Журнал входов | Класс{% endblock %}
+{% block content %}
+<header class="mb-5">
+  <a href="{{ url_for('main.users_page') }}" class="eyebrow-neon">← К пользователям</a>
+  <h1 class="mt-3 font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Журнал входов</h1>
+  <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Кто и когда заходил на сайт. Номера телефонов скрыты, видны только последние 4 цифры.</p>
+</header>
+
+<section class="mb-5 grid grid-cols-3 gap-3 text-center">
+  <div class="glass-card p-3"><p class="text-2xl font-black text-slate-900 dark:text-white">{{ stats.success }}</p><p class="text-xs text-slate-500 dark:text-slate-400">входов за 24 ч</p></div>
+  <div class="glass-card p-3"><p class="text-2xl font-black {{ 'text-rose-600 dark:text-rose-400' if stats.failed else 'text-slate-900 dark:text-white' }}">{{ stats.failed }}</p><p class="text-xs text-slate-500 dark:text-slate-400">неудачных</p></div>
+  <div class="glass-card p-3"><p class="text-2xl font-black text-slate-900 dark:text-white">{{ stats.users }}</p><p class="text-xs text-slate-500 dark:text-slate-400">пользователей</p></div>
+</section>
+
+<form method="get" class="mb-5">
+  <label for="log-filter" class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">Показать</label>
+  <select id="log-filter" name="filter" onchange="this.form.submit()" class="input-cyber">
+    <option value="" {% if not selected %}selected{% endif %}>Все события</option>
+    <option value="success" {% if selected == 'success' %}selected{% endif %}>Входы</option>
+    <option value="failed" {% if selected == 'failed' %}selected{% endif %}>Неудачные входы</option>
+    <option value="logout" {% if selected == 'logout' %}selected{% endif %}>Выходы</option>
+    <option value="register" {% if selected == 'register' %}selected{% endif %}>Регистрации</option>
+  </select>
+</form>
+
+<section class="space-y-3">
+  {% for row in rows %}
+  <article class="glass-card p-4">
+    <div class="flex items-start justify-between gap-3">
+      <div class="min-w-0">
+        <p class="truncate font-bold text-slate-900 dark:text-white">{{ row.name or (row.phone and ('Телефон ' ~ row.phone)) or 'Неизвестный пользователь' }}</p>
+        {% if row.name and row.phone %}<p class="text-xs text-slate-500 dark:text-slate-400">{{ row.phone }}</p>{% endif %}
+      </div>
+      <span class="shrink-0 {{ 'badge-hard' if row.kind in ('login_failed', 'register_rejected') else 'badge-medium' }}">{{ row.label }}</span>
+    </div>
+    <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">{{ row.time.strftime('%d.%m.%Y %H:%M:%S') }}{% if row.reason %} · {{ row.reason }}{% endif %}</p>
+    <p class="mt-1 text-xs text-slate-400 dark:text-slate-500">{{ row.device }} · IP {{ row.ip or '—' }}{% if row.channel == 'api' %} · API{% endif %}</p>
+  </article>
+  {% else %}
+  <p class="glass-card p-6 text-center text-slate-500">Событий пока нет. Они появятся после первого входа на сайт.</p>
+  {% endfor %}
+</section>
+
+{% if pagination.pages > 1 %}
+<nav class="mt-5 grid grid-cols-2 gap-3" aria-label="Страницы журнала">
+  {% if pagination.has_prev %}<a href="{{ url_for('main.login_log_page', page=pagination.prev_num, filter=selected or None) }}" class="btn-ghost">← Новее</a>{% else %}<span></span>{% endif %}
+  {% if pagination.has_next %}<a href="{{ url_for('main.login_log_page', page=pagination.next_num, filter=selected or None) }}" class="btn-ghost">Старее →</a>{% endif %}
+</nav>
+<p class="mt-2 text-center text-xs text-slate-400">Страница {{ pagination.page }} из {{ pagination.pages }}</p>
+{% endif %}
+{% endblock %}
