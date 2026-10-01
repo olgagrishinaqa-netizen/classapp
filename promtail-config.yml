@@ -63,9 +63,8 @@ scrape_configs:
             uri: request_uri
             remote_addr: remote_addr
             upstream_response_time: upstream_response_time
+      # Низкокардинальные метки; полная JSON-строка сохраняется (request_uri,
+      # upstream_response_time доступны через `| json` в запросах Loki).
       - labels:
           status:
           method:
-          uri:
-      - output:
-          source: uri
