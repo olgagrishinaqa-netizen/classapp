@@ -20,6 +20,8 @@ def test_dashboard_shows_latest_news_image(client, db):
     assert page.status_code == 200
     assert b'/uploads/stored-photo.png' in page.data
     assert b'/uploads/stored-b.png' in page.data
+    assert b'js-carousel-next' in page.data
+    assert b'object-contain' in page.data
 
 
 def test_dashboard_hides_image_block_when_news_has_none(client, db):

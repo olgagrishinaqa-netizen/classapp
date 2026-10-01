@@ -344,14 +344,6 @@ def dashboard_page():
 
     active_task_count = Task.query.filter(Task.status != "done").count()
     latest_news = News.query.filter_by(status="published").order_by(News.created_at.desc()).first()
-    gallery_news = (
-        News.query.filter_by(status="published")
-        .filter(News.images.any())
-        .order_by(News.created_at.desc())
-        .limit(6)
-        .all()
-    )
-    gallery = [(item, image) for item in gallery_news for image in item.images][:12]
     month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     monthly_expenses = float(
         db.session.query(db.func.coalesce(db.func.sum(Expense.amount), 0))
@@ -367,7 +359,6 @@ def dashboard_page():
         active_task_count=active_task_count,
         monthly_expenses=monthly_expenses,
         latest_news=latest_news,
-        gallery=gallery,
     )
 
 

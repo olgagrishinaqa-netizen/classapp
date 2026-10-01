@@ -1,0 +1,17 @@
+{# Баннер-карусель: изображения целиком (object-contain), листаются кнопками и свайпом. #}
+{% macro carousel(images, height="h-56") %}
+{% if images %}
+<div class="js-carousel relative mt-3 overflow-hidden rounded-2xl bg-slate-100 dark:bg-slate-900/60" role="region" aria-label="Изображения новости">
+  <div class="js-carousel-track flex snap-x snap-mandatory overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    {% for image in images %}
+    <div class="{{ height }} w-full shrink-0 snap-center"><img src="{{ image.url }}" alt="" loading="lazy" class="h-full w-full object-contain"></div>
+    {% endfor %}
+  </div>
+  {% if images|length > 1 %}
+  <button type="button" class="js-carousel-prev absolute left-2 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-xl text-white backdrop-blur-sm active:scale-95" aria-label="Предыдущее изображение">‹</button>
+  <button type="button" class="js-carousel-next absolute right-2 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-xl text-white backdrop-blur-sm active:scale-95" aria-label="Следующее изображение">›</button>
+  <span class="js-carousel-counter absolute bottom-2 right-2 rounded-full bg-black/50 px-2 py-0.5 text-xs font-semibold text-white">1 / {{ images|length }}</span>
+  {% endif %}
+</div>
+{% endif %}
+{% endmacro %}

@@ -190,5 +190,30 @@
       });
     })();
   </script>
+  <script>
+    (function () {
+      function update(box) {
+        var track = box.querySelector('.js-carousel-track');
+        var counter = box.querySelector('.js-carousel-counter');
+        if (!counter) return;
+        var index = Math.round(track.scrollLeft / track.clientWidth);
+        counter.textContent = (index + 1) + ' / ' + track.children.length;
+      }
+      document.addEventListener('click', function (event) {
+        var button = event.target.closest('.js-carousel-prev, .js-carousel-next');
+        if (!button) return;
+        var box = button.closest('.js-carousel');
+        var track = box.querySelector('.js-carousel-track');
+        var step = button.classList.contains('js-carousel-next') ? 1 : -1;
+        var last = track.children.length - 1;
+        var index = Math.round(track.scrollLeft / track.clientWidth) + step;
+        index = index < 0 ? last : (index > last ? 0 : index);
+        track.scrollTo({ left: index * track.clientWidth, behavior: 'smooth' });
+      });
+      document.querySelectorAll('.js-carousel-track').forEach(function (track) {
+        track.addEventListener('scroll', function () { update(track.parentElement); }, { passive: true });
+      });
+    })();
+  </script>
 </body>
 </html>
