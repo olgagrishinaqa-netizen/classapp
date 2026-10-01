@@ -21,3 +21,22 @@ groups:
         annotations:
           summary: "High 5xx rate on classapp"
           description: "Доля ответов 5xx превышает 5% за последние 5 минут."
+
+      - alert: LoginBruteForceSuspected
+        expr: sum(increase(classapp_login_attempts_total{result="failure"}[5m])) > 15
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Много неудачных входов"
+          description: "Более 15 неудачных попыток входа за 5 минут — возможен подбор пароля. Детали по IP: дашборд ClassApp Audit."
+
+      - alert: HighLatencyP95
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(flask_http_request_duration_seconds_bucket[5m]))) > 1.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Медленные ответы classapp"
+          description: "p95 времени ответа выше 1.5 с уже 10 минут."

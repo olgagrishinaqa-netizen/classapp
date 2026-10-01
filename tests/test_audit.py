@@ -38,3 +38,11 @@ def test_logout_is_audited(client, app):
     client.post("/login", data={"username": "79990000000", "password": "admin123"})
     client.post("/logout")
     assert [e for e in _events(app) if e["event"] == "logout"][-1]["channel"] == "web"
+
+
+def test_login_attempts_are_exposed_as_prometheus_metrics(client):
+    client.post("/login", data={"username": "79990000000", "password": "nope-nope"})
+    client.post("/login", data={"username": "79990000000", "password": "admin123"})
+    metrics = client.get("/metrics").data.decode()
+    assert 'classapp_login_attempts_total{channel="web",result="failure"}' in metrics
+    assert 'classapp_login_attempts_total{channel="web",result="success"}' in metrics

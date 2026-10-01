@@ -23,7 +23,7 @@ from sqlalchemy import case, or_
 from sqlalchemy.exc import IntegrityError
 from werkzeug.utils import secure_filename
 
-from .audit import audit, audit_login, mask_phone
+from .audit import REGISTRATIONS, audit, audit_login, mask_phone
 from .extensions import db
 from .forms import (
     BellScheduleEntryForm,
@@ -316,6 +316,7 @@ def register_page():
             user.set_password(form.password.data)
             db.session.add(user)
             db.session.commit()
+            REGISTRATIONS.inc()
             audit("register", user_id=user.id, phone=mask_phone(phone))
             flash("Аккаунт создан. Теперь войдите в приложение.", "success")
             return redirect(url_for("main.login_page"))

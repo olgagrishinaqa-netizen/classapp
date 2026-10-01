@@ -6,6 +6,19 @@
 """
 
 from flask import current_app, request, session
+from prometheus_client import Counter
+
+LOGIN_ATTEMPTS = Counter(
+    "classapp_login_attempts_total",
+    "Попытки входа в приложение",
+    ["result", "channel"],
+)
+USER_ACTIONS = Counter(
+    "classapp_user_actions_total",
+    "Изменяющие действия пользователей",
+    ["endpoint", "status_class"],
+)
+REGISTRATIONS = Counter("classapp_registrations_total", "Успешные регистрации")
 
 # Эндпоинты, которые аудитируются явно (с причиной/результатом), а не общим хуком.
 EXPLICIT_ENDPOINTS = {
@@ -43,6 +56,7 @@ def audit(event, **fields):
 
 
 def audit_login(success, phone, user=None, reason=None, channel="web"):
+    LOGIN_ATTEMPTS.labels(result="success" if success else "failure", channel=channel).inc()
     audit(
         "login_success" if success else "login_failed",
         user_id=user.id if user else None,
@@ -62,6 +76,9 @@ def register_request_audit(app):
             return response
         if request.endpoint in EXPLICIT_ENDPOINTS or request.endpoint is None:
             return response
+        USER_ACTIONS.labels(
+            endpoint=request.endpoint, status_class=f"{response.status_code // 100}xx"
+        ).inc()
         audit(
             "action",
             user_id=session.get("user_id"),

@@ -90,6 +90,38 @@ data:
           "targets": [
             {"expr": "100 - (avg by(instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)", "legendFormat": "{{instance}}"}
           ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Login attempts (success vs failure)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
+          "targets": [
+            {"expr": "sum by (result) (increase(classapp_login_attempts_total[5m]))", "legendFormat": "{{result}}"}
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "User actions by section",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
+          "targets": [
+            {"expr": "sum by (endpoint) (increase(classapp_user_actions_total{status_class=~\"2xx|3xx\"}[15m]))", "legendFormat": "{{endpoint}}"}
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Response time p95",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22},
+          "targets": [
+            {"expr": "histogram_quantile(0.95, sum by (le) (rate(flask_http_request_duration_seconds_bucket[5m])))", "legendFormat": "p95"}
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "Registrations (24h)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22},
+          "targets": [
+            {"expr": "sum(increase(classapp_registrations_total[24h]))"}
+          ]
         }
       ]
     }

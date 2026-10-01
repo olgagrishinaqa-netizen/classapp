@@ -16,8 +16,10 @@ from .models import User
 
 try:
     from prometheus_flask_exporter import PrometheusMetrics
+    from prometheus_flask_exporter.multiprocess import GunicornInternalPrometheusMetrics
 except ImportError:
     PrometheusMetrics = None
+    GunicornInternalPrometheusMetrics = None
 
 
 def configure_json_logging(app):
@@ -118,7 +120,12 @@ def create_app(config_object=None):
             )
 
     if PrometheusMetrics is not None:
-        PrometheusMetrics(app)
+        # Под gunicorn с несколькими воркерами метрики агрегируются через
+        # PROMETHEUS_MULTIPROC_DIR (см. gunicorn.conf.py); иначе — обычный режим.
+        if os.environ.get("PROMETHEUS_MULTIPROC_DIR"):
+            GunicornInternalPrometheusMetrics(app)
+        else:
+            PrometheusMetrics(app)
 
     from .routes import bp
 

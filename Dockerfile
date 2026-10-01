@@ -8,7 +8,8 @@ WORKDIR /app
 
 # Сразу настраиваем права на рабочую директорию для нашего пользователя
 RUN chown appuser:appuser /app
-RUN mkdir -p /var/log/classapp && chown -R appuser:appuser /var/log/classapp
+RUN mkdir -p /var/log/classapp /tmp/prometheus_multiproc \
+    && chown -R appuser:appuser /var/log/classapp /tmp/prometheus_multiproc
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -22,7 +23,8 @@ RUN chmod +x /entrypoint.sh
 
 USER appuser
 
-ENV FLASK_CONFIG=config.ProdConfig
+ENV FLASK_CONFIG=config.ProdConfig \
+    PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus_multiproc
 EXPOSE 8000
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8000", "app:create_app()"]
