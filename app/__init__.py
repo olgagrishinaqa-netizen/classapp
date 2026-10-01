@@ -124,6 +124,10 @@ def create_app(config_object=None):
 
     app.register_blueprint(bp)
 
+    from .audit import register_request_audit
+
+    register_request_audit(app)
+
     @app.errorhandler(500)
     def internal_server_error(error):
         has_traceback = sys.exc_info()[0] is not None

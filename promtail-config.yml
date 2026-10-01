@@ -25,16 +25,26 @@ scrape_configs:
             message: message
             path: path
             line: line
+            event: event
+            user_id: user_id
+            ip: ip
+            reason: reason
+            status: status
       - labels:
           level:
+          event:
       - timestamp:
           source: timestamp
           format: RFC3339Nano
           fallback_formats:
             - "2006-01-02 15:04:05,000"
             - "2006-01-02 15:04:05"
-      - output:
-          source: message
+      # Аудит-события (event != "") оставляем полным JSON, чтобы в Loki были ip/user_id.
+      - match:
+          selector: '{job="flask-app", event=""}'
+          stages:
+            - output:
+                source: message
 
   - job_name: nginx-web
     static_configs:

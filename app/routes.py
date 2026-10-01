@@ -23,6 +23,7 @@ from sqlalchemy import case, or_
 from sqlalchemy.exc import IntegrityError
 from werkzeug.utils import secure_filename
 
+from .audit import audit, audit_login, mask_phone
 from .extensions import db
 from .forms import (
     BellScheduleEntryForm,
@@ -290,7 +291,9 @@ def login_page():
             db.session.commit()
             session["user_id"] = user.id
             session["active_role"] = "admin" if user.is_admin else user.role
+            audit_login(True, phone, user)
             return redirect(url_for("main.dashboard_page"))
+        audit_login(False, phone, reason="bad_password" if user else "unknown_user")
         flash("Неверный номер телефона или пароль.", "error")
     return render_template("login.html", form=form, show_navigation=False)
 
@@ -307,11 +310,13 @@ def register_page():
             form.username.errors.append("Введите корректный номер телефона.")
         elif User.query.filter_by(phone=phone).first():
             form.username.errors.append("Этот номер телефона уже зарегистрирован.")
+            audit("register_rejected", phone=mask_phone(phone), reason="phone_exists")
         else:
             user = User(full_name=form.full_name.data.strip(), phone=phone, role="parent")
             user.set_password(form.password.data)
             db.session.add(user)
             db.session.commit()
+            audit("register", user_id=user.id, phone=mask_phone(phone))
             flash("Аккаунт создан. Теперь войдите в приложение.", "success")
             return redirect(url_for("main.login_page"))
     return render_template("register.html", form=form, show_navigation=False)
@@ -319,6 +324,7 @@ def register_page():
 
 @bp.post("/logout")
 def logout_page():
+    audit("logout", user_id=session.get("user_id"), channel="web")
     session.clear()
     flash("Вы вышли из аккаунта.", "success")
     return redirect(url_for("main.login_page"))
@@ -1299,16 +1305,19 @@ def login():
     phone = User.normalize_phone(data.get("phone"))
     user = User.query.filter_by(phone=phone).first()
     if not user or not user.check_password(data.get("password") or ""):
+        audit_login(False, phone, reason="bad_password" if user else "unknown_user", channel="api")
         return jsonify(error="Неверный телефон или пароль"), 401
     user.last_login = local_now()
     db.session.commit()
     session["user_id"] = user.id
     session["active_role"] = "admin" if user.is_admin else user.role
+    audit_login(True, phone, user, channel="api")
     return jsonify(user=user_json(user), active_role=session["active_role"])
 
 
 @bp.post("/api/logout")
 def logout():
+    audit("logout", user_id=session.get("user_id"), channel="api")
     session.clear()
     return jsonify(ok=True)
 
