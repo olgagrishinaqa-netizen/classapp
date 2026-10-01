@@ -109,12 +109,15 @@ echo "ШАГ 8: аннотация деплоя в Grafana (необязател
     exit 0
   fi
   PAYLOAD="$(COMMIT_SHA="$COMMIT_SHA" python3 -c 'import json,os; sha=os.environ["COMMIT_SHA"]; print(json.dumps({"text": "Деплой classapp " + sha[:7], "tags": ["deploy", "classapp"]}))')"
-  if curl -fsS --max-time 10 -u "${GF_USER}:${GF_PASS}" -H 'Content-Type: application/json' \
-      -d "$PAYLOAD" "${GRAFANA_URL}/api/annotations" >/dev/null 2>&1; then
-    echo "аннотация деплоя ${COMMIT_SHA:0:7} добавлена"
-  else
-    echo "Grafana недоступна, аннотацию пропускаем"
-  fi
+  HTTP_CODE="$(curl -sS --max-time 10 -o /tmp/grafana-annotation.out -w '%{http_code}' \
+      -u "${GF_USER}:${GF_PASS}" -H 'Content-Type: application/json' \
+      -d "$PAYLOAD" "${GRAFANA_URL}/api/annotations" 2>/tmp/grafana-annotation.err)"
+  case "$HTTP_CODE" in
+    200) echo "аннотация деплоя ${COMMIT_SHA:0:7} добавлена" ;;
+    000) echo "Grafana не отвечает на ${GRAFANA_URL}: $(head -c 200 /tmp/grafana-annotation.err)" ;;
+    *)   echo "Grafana вернула HTTP ${HTTP_CODE}: $(head -c 200 /tmp/grafana-annotation.out)" ;;
+  esac
+  $KUBE get pods -n monitoring -l app.kubernetes.io/name=grafana --no-headers 2>/dev/null | sed 's/^/    /'
 ) || true
 
 echo "ШАГ 9: очистка"
