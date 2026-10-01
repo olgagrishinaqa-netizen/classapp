@@ -123,6 +123,10 @@ echo "ШАГ 8: аннотация деплоя в Grafana (необязател
 echo "ШАГ 9: очистка"
 journalctl --vacuum-time=7d >/dev/null 2>&1 || true
 if k3s crictl images >/dev/null 2>&1; then
-  UNREF="$(k3s crictl images -q --unreferenced || true)"
-  [ -n "$UNREF" ] && k3s crictl rmi $UNREF >/dev/null 2>&1 || true
+  # --prune удаляет образы, которые не использует ни один контейнер.
+  if PRUNE_OUT="$(k3s crictl rmi --prune 2>&1)"; then
+    echo "очистка неиспользуемых образов выполнена"
+  else
+    echo "crictl rmi --prune не удалась (пропускаем): $(printf '%s' "$PRUNE_OUT" | tail -n 2)"
+  fi
 fi
