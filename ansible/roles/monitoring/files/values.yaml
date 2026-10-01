@@ -30,8 +30,26 @@ grafana:
       cpu: 50m
       memory: 128Mi
     limits:
-      cpu: 200m
-      memory: 256Mi
+      cpu: 500m
+      memory: 512Mi
+  # После перезагрузки preemptible-ВМ Grafana стартует долго (SQLite на HDD,
+  # миграции под лимитом CPU). Дефолтные пробы (readiness timeout 1s, liveness
+  # 60s+10x10s) убивали её в цикле — даём время на старт и медленные ответы.
+  livenessProbe:
+    httpGet:
+      path: /api/health
+      port: grafana
+    initialDelaySeconds: 120
+    periodSeconds: 15
+    timeoutSeconds: 30
+    failureThreshold: 20
+  readinessProbe:
+    httpGet:
+      path: /api/health
+      port: grafana
+    periodSeconds: 10
+    timeoutSeconds: 10
+    failureThreshold: 6
 
 prometheus:
   service:
