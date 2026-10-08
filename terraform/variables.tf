@@ -60,9 +60,9 @@ variable "allowed_ssh_cidrs" {
 }
 
 variable "public_tcp_ports" {
-  description = "30080 — приложение (nginx NodePort), 30300 — Grafana, 30900 — Prometheus (NodePort'ы заданы в k8s/ и ansible/roles/monitoring/files/values.yaml)."
+  description = "Единая точка входа: 80/443 — nginx (приложение на /, Grafana на /grafana/). NodePort'ы 30080/30300/30900 остаются внутри ВМ (скрипт деплоя ходит на них через 127.0.0.1), наружу закрыты. Prometheus — через SSH-туннель: ssh -L 9090:127.0.0.1:30900."
   type        = list(number)
-  default     = [80, 443, 3000, 30080, 30300, 30900]
+  default     = [80, 443]
 }
 
 variable "image_family" {

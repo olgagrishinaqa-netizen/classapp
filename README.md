@@ -340,9 +340,12 @@ journalctl -u classapp-pull-deploy -f           # логи
 затем ждёт нового коммита.
 
 После установки доступны:
-- Grafana: `http://<NODE_IP>:30300`
-- Prometheus: `http://<NODE_IP>:30900`
-- Health-check: `http://<NODE_IP>:30080/healthz`
+Единая точка входа — nginx на порту 80 (снаружи открыты только 80/443):
+- Приложение: `http://<NODE_IP>/`
+- Grafana: `http://<NODE_IP>/grafana/`
+- Health-check: `http://<NODE_IP>/healthz`
+- Prometheus наружу не публикуется (нет авторизации): `ssh -L 9090:127.0.0.1:30900 ubuntu@<NODE_IP>`, затем `http://localhost:9090`
+  (NodePort'ы 30080/30300/30900 доступны только изнутри ВМ).
 - Метрики Flask: `/metrics`
 - Метрики Patroni: `/metrics` на `classapp-patroni:8008`
 

@@ -34,9 +34,37 @@ data:
         keepalive_timeout 65;
         client_max_body_size 20m;
 
+        # Единая точка входа: приложение на «/», Grafana на «/grafana/».
+        # CoreDNS в K3s. Адрес Grafana задан через переменную + resolver, чтобы
+        # nginx стартовал, даже если мониторинг ещё не поднят (иначе он падает
+        # с "host not found in upstream" и роняет доступ к самому приложению).
+        resolver 10.43.0.10 valid=10s ipv6=off;
+
+        map $http_upgrade $connection_upgrade {
+            default upgrade;
+            ''      close;
+        }
+
         server {
             listen 8080;
             server_name _;
+
+            location = /grafana {
+                return 301 /grafana/;
+            }
+
+            location /grafana/ {
+                set $grafana_upstream kube-prometheus-stack-grafana.monitoring.svc.cluster.local;
+                proxy_pass http://$grafana_upstream:80;
+                proxy_http_version 1.1;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection $connection_upgrade;
+                proxy_read_timeout 60s;
+            }
 
             location / {
                 proxy_pass http://classapp-web-service:8000;
