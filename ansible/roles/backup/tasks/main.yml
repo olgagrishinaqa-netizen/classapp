@@ -3,14 +3,14 @@
   ansible.builtin.pip:
     name: awscli
     executable: pip3
-  when: classapp_backup_bucket | length > 0
+  when: (classapp_backup_bucket | default('')) | length > 0
 
 - name: Create /etc/classapp
   ansible.builtin.file:
     path: /etc/classapp
     state: directory
     mode: "0755"
-  when: classapp_backup_bucket | length > 0
+  when: (classapp_backup_bucket | default('')) | length > 0
 
 - name: Write backup settings
   ansible.builtin.copy:
@@ -19,14 +19,14 @@
     content: |
       BACKUP_BUCKET={{ classapp_backup_bucket }}
       AWS_DEFAULT_REGION={{ classapp_backup_region | default('eu-north-1') }}
-  when: classapp_backup_bucket | length > 0
+  when: (classapp_backup_bucket | default('')) | length > 0
 
 - name: Install backup script
   ansible.builtin.copy:
     src: classapp-backup.sh
     dest: /usr/local/bin/classapp-backup
     mode: "0755"
-  when: classapp_backup_bucket | length > 0
+  when: (classapp_backup_bucket | default('')) | length > 0
 
 - name: Install backup systemd units
   ansible.builtin.copy:
@@ -55,7 +55,7 @@
 
         [Install]
         WantedBy=timers.target
-  when: classapp_backup_bucket | length > 0
+  when: (classapp_backup_bucket | default('')) | length > 0
 
 - name: Enable backup timer
   ansible.builtin.systemd:
@@ -63,4 +63,4 @@
     enabled: true
     state: started
     daemon_reload: true
-  when: classapp_backup_bucket | length > 0
+  when: (classapp_backup_bucket | default('')) | length > 0

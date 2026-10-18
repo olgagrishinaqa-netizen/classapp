@@ -26,6 +26,5 @@ k3s_registries_config: {}
 # Размер swap-файла (ГБ): на ноде 2 ГБ RAM он страхует от OOM при пиках.
 swap_size_gb: 2
 
-# Бакет S3 для ночных бэкапов; в inventory его подставляет generate_inventory.sh.
-# Пусто — роль backup пропускается.
-classapp_backup_bucket: ""
+# Бакет S3 для ночных бэкапов задаёт inventory (generate_inventory.sh ->
+# classapp_backup_bucket). Не определён — роль backup пропускается.
