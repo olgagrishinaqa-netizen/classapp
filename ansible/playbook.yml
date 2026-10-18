@@ -36,3 +36,4 @@
   roles:
     - bootstrap_secrets
     - monitoring
+    - backup

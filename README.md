@@ -124,7 +124,28 @@ locust -f tests/load/locustfile.py --host=http://localhost:8000 \
 пересоздаётся при переключении — данные Patroni на его локальном диске не
 теряются. Пересоздаются/удаляются только добавленные `master-2`/`worker-1`.
 
-### Terraform в Yandex Cloud
+### Terraform в AWS (актуальный вариант)
+
+После пожара в ЦОД Yandex прод переехал в AWS (free plan, `eu-north-1`, `t3.small`, Elastic IP,
+S3-бакет для ночных бэкапов, доступ ВМ к нему — через IAM-роль инстанса). Нагрузка урезана под 2 ГБ RAM:
+Patroni ×1, web ×2 (HPA 2–3), swap 2 ГБ.
+
+```bash
+cd terraform/aws
+cp terraform.tfvars.example terraform.tfvars   # впишите ssh_public_key
+export AWS_PROFILE=...                         # или AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY (IAM-пользователь, не root)
+terraform init && terraform apply
+cd .. && ./generate_inventory.sh               # inventory + имя бакета бэкапов
+cd ../ansible && ansible-playbook playbook.yml -e k3s_token=$(openssl rand -hex 32)
+```
+
+Затем в GitHub Secrets обновите `SSH_HOST` (= `terraform output master1_static_ip`) и `SSH_KEY`.
+Бэкап (`classapp-backup.timer`, 02:30 UTC) кладёт `pg_dump` и архив загрузок в S3, хранение 14 дней.
+Восстановление: `aws s3 cp s3://<бакет>/db/<файл>.sql.gz - | gunzip | kubectl exec -i <patroni-master-pod> -- psql -U postgres classapp`.
+
+Разделы ниже про Yandex Cloud (`terraform/`) — исторические.
+
+### Terraform в Yandex Cloud (legacy)
 
 ```bash
 cd terraform

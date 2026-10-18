@@ -79,7 +79,7 @@ metadata:
     app.kubernetes.io/part-of: classapp
 spec:
   serviceName: classapp-patroni
-  replicas: 2
+  replicas: 1 # одна нода t3.small: реплика на том же диске отказоустойчивости не добавляет
   podManagementPolicy: OrderedReady
   updateStrategy:
     type: RollingUpdate

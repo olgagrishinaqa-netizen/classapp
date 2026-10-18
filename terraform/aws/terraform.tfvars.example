@@ -1,0 +1,8 @@
+# Креды AWS берутся из ~/.aws/credentials или AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY.
+ssh_public_key = "ssh-ed25519 AAAA..."
+
+# SSH-деплой идёт с раннеров GitHub, поэтому 22 должен быть открыт для них.
+allowed_ssh_cidrs = ["0.0.0.0/0"]
+
+# region        = "eu-north-1"
+# instance_type = "t3.small"

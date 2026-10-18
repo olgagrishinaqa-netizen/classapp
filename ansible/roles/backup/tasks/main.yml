@@ -1,0 +1,66 @@
+# Ночной бэкап БД и загрузок в S3 (бакет и IAM-роль создаёт terraform/aws).
+- name: Install AWS CLI
+  ansible.builtin.pip:
+    name: awscli
+    executable: pip3
+  when: classapp_backup_bucket | length > 0
+
+- name: Create /etc/classapp
+  ansible.builtin.file:
+    path: /etc/classapp
+    state: directory
+    mode: "0755"
+  when: classapp_backup_bucket | length > 0
+
+- name: Write backup settings
+  ansible.builtin.copy:
+    dest: /etc/classapp/backup.env
+    mode: "0600"
+    content: |
+      BACKUP_BUCKET={{ classapp_backup_bucket }}
+      AWS_DEFAULT_REGION={{ classapp_backup_region | default('eu-north-1') }}
+  when: classapp_backup_bucket | length > 0
+
+- name: Install backup script
+  ansible.builtin.copy:
+    src: classapp-backup.sh
+    dest: /usr/local/bin/classapp-backup
+    mode: "0755"
+  when: classapp_backup_bucket | length > 0
+
+- name: Install backup systemd units
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: classapp-backup.service
+      content: |
+        [Unit]
+        Description=classapp backup to S3
+        After=k3s.service
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/bin/classapp-backup
+        TimeoutStartSec=30min
+    - name: classapp-backup.timer
+      content: |
+        [Unit]
+        Description=Nightly classapp backup
+
+        [Timer]
+        OnCalendar=*-*-* 02:30:00
+        Persistent=true
+
+        [Install]
+        WantedBy=timers.target
+  when: classapp_backup_bucket | length > 0
+
+- name: Enable backup timer
+  ansible.builtin.systemd:
+    name: classapp-backup.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: classapp_backup_bucket | length > 0

@@ -12,7 +12,7 @@ spec:
     kind: Deployment
     name: classapp-web
   minReplicas: 2
-  maxReplicas: 5
+  maxReplicas: 3
   metrics:
     - type: Resource
       resource:

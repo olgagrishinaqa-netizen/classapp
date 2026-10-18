@@ -27,3 +27,22 @@
 # периодически нестабильна для внешних HTTPS-загрузок, независимо от хоста).
 # Устанавливать не нужно — инсталлятор k3s сам создаёт симлинк
 # /usr/local/bin/kubectl на свой бинарник (роль k3s ниже).
+
+- name: Create swap file
+  ansible.builtin.command:
+    cmd: "bash -c 'fallocate -l {{ swap_size_gb }}G /swapfile && chmod 600 /swapfile && mkswap /swapfile'"
+    creates: /swapfile
+  when: swap_size_gb | int > 0
+
+- name: Persist swap in fstab
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    line: "/swapfile none swap sw 0 0"
+  when: swap_size_gb | int > 0
+
+- name: Activate swap
+  ansible.builtin.shell: swapon --show=NAME --noheadings | grep -qx /swapfile || swapon /swapfile
+  args:
+    executable: /bin/bash
+  changed_when: false
+  when: swap_size_gb | int > 0

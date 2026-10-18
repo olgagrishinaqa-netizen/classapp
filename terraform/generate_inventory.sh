@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Генерирует ansible/inventory/hosts.ini из terraform output k3s_nodes.
+# Генерирует ansible/inventory/hosts.ini из terraform output k3s_nodes (terraform/aws).
 # Запускать из директории terraform/ после `terraform apply`.
 #
 # Использование:
@@ -28,7 +28,11 @@ fi
 
 mkdir -p "${INVENTORY_DIR}"
 
-nodes_json="$(terraform -chdir="${SCRIPT_DIR}" output -json k3s_nodes)"
+# По умолчанию инфраструктура в AWS (terraform/aws); legacy-вариант Yandex Cloud:
+#   TF_DIR=. ./generate_inventory.sh
+TF_DIR="${TF_DIR:-${SCRIPT_DIR}/aws}"
+nodes_json="$(terraform -chdir="${TF_DIR}" output -json k3s_nodes)"
+backup_bucket="$(terraform -chdir="${TF_DIR}" output -raw backup_bucket 2>/dev/null || true)"
 
 {
     echo "# Сгенерировано автоматически: terraform/generate_inventory.sh"
@@ -55,6 +59,8 @@ nodes_json="$(terraform -chdir="${SCRIPT_DIR}" output -json k3s_nodes)"
     echo "[k3s_cluster:vars]"
     echo "ansible_user=${SSH_USER}"
     echo "ansible_ssh_private_key_file=${SSH_KEY}"
+    [ -n "${backup_bucket}" ] && echo "classapp_backup_bucket=${backup_bucket}"
+    true
 } > "${INVENTORY_FILE}"
 
 echo "Inventory записан в ${INVENTORY_FILE}"
