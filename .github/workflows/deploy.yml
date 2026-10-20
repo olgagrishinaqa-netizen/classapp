@@ -1,10 +1,9 @@
 name: Deploy to Production VM1
 
+# Единственный путь автоматического деплоя в main (pull-таймер на ВМ по умолчанию выключен).
 # SSH_HOST — публичный IP master-1 (terraform output master1_static_ip).
 # Необязательный секрет SSH_PORT — альтернативный порт sshd (по умолчанию 22).
-# Канал Azure (раннеры GitHub) -> Yandex Cloud нестабилен: поэтому одно
-# мультиплексируемое SSH-соединение, IPQoS=none и повторы на каждом шаге.
-# Логика самого деплоя — scripts/pull-deploy/deploy-steps.sh (общая с pull-вариантом).
+# Логика самого деплоя — scripts/pull-deploy/deploy-steps.sh (общая с запасным pull-вариантом).
 
 on:
   workflow_run:
@@ -25,9 +24,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
-
-      - name: Fix Runner MTU Network Issues
-        run: sudo ip link set dev eth0 mtu 1400 || true
 
       - name: Prepare SSH config
         run: |
@@ -59,34 +55,18 @@ jobs:
             ControlPersist 15m
           EOF
           chmod 600 "$HOME/.ssh/config"
-          echo "DIAG runner egress IP: $(curl -s --max-time 5 https://ifconfig.me || echo unknown)"
-
-      - name: DIAG probe ports from runner
-        run: |
-          for p in 22 80 443 2222 3000 30080 30300 30900; do
-            printf 'port %-6s ' "$p"
-            timeout 8 bash -c "exec 3<>/dev/tcp/$SSH_HOST/$p" 2>&1 && echo "OPEN" || echo "closed/refused/timeout (exit $?)"
-          done
-          echo "--- other Yandex Cloud endpoints (443) ---"
-          for h in storage.yandexcloud.net compute.api.cloud.yandex.net ya.ru; do
-            printf '%-36s ' "$h"
-            timeout 8 bash -c "exec 3<>/dev/tcp/$h/443" 2>&1 && echo "OPEN" || echo "closed/timeout (exit $?)"
-          done
-          echo "--- traceroute ---"
-          (command -v traceroute >/dev/null || sudo apt-get install -y -qq traceroute >/dev/null 2>&1)
-          timeout 60 traceroute -n -T -p 22 -w 2 -m 20 "$SSH_HOST" 2>&1 | tail -22 || true
 
       - name: Wait for SSH to become responsive
         run: |
           set -uo pipefail
-          for attempt in $(seq 1 10); do
+          for attempt in $(seq 1 8); do
             if ssh -v prod true >/tmp/ssh_attempt.log 2>&1; then
               echo "✅ SSH is responsive (attempt $attempt)."
               exit 0
             fi
-            echo "⏳ Attempt $attempt/10 failed. Last ssh output:"
+            echo "⏳ Attempt $attempt/8 failed. Last ssh output:"
             grep -vE "^debug1: (Reading|Applying|identity|Local|Authenticating|/etc)" /tmp/ssh_attempt.log | tail -5 | sed 's/^/    /'
-            sleep 60
+            sleep 15
           done
           echo "❌ SSH did not become responsive."
           exit 1

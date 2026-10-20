@@ -134,6 +134,12 @@ def _upload_folder():
     return current_app.config.get("UPLOAD_FOLDER", os.path.join(os.getcwd(), "uploads"))
 
 
+def _receipts_folder():
+    """Чеки лежат в подкаталоге общего UPLOAD_FOLDER: он на постоянном томе,
+    входит в бэкап и отдаётся только авторизованным через /uploads/."""
+    return os.path.join(_upload_folder(), "receipts")
+
+
 def _attach_news_images(news_item, files):
     """Сохраняет загруженные файлы и прикрепляет их к новости (в сессию).
     Возвращает сообщение об ошибке либо None. Файлы, записанные до ошибки,
@@ -1297,9 +1303,7 @@ def expenses_page():
                 receipt_filename = None
                 receipt = expense_form.receipt.data
                 if receipt:
-                    receipt_dir = os.path.join(
-                        current_app.root_path, "static", "uploads", "receipts"
-                    )
+                    receipt_dir = _receipts_folder()
                     receipt_filename, receipt_error = _save_uploaded_file(
                         receipt,
                         allowed_extensions=ALLOWED_RECEIPT_EXTENSIONS,
@@ -1362,7 +1366,7 @@ def edit_expense_page(expense_id):
     if form.validate_on_submit():
         receipt = form.receipt.data
         if receipt:
-            receipt_dir = os.path.join(current_app.root_path, "static", "uploads", "receipts")
+            receipt_dir = _receipts_folder()
             receipt_filename, receipt_error = _save_uploaded_file(
                 receipt,
                 allowed_extensions=ALLOWED_RECEIPT_EXTENSIONS,

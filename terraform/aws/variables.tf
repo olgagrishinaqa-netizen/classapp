@@ -40,3 +40,34 @@ variable "ssh_public_key" {
   description = "OpenSSH public key without the username prefix."
   type        = string
 }
+
+variable "schedule_enabled" {
+  description = "Автоматически запускать ВМ утром и останавливать ночью (экономия кредитов). false — ВМ работает круглосуточно."
+  type        = bool
+  default     = true
+}
+
+variable "schedule_timezone" {
+  type    = string
+  default = "Europe/Minsk"
+}
+
+variable "schedule_start_hour" {
+  type    = number
+  default = 7
+}
+
+variable "schedule_start_minute" {
+  type    = number
+  default = 0
+}
+
+variable "schedule_stop_hour" {
+  type    = number
+  default = 22
+}
+
+variable "schedule_stop_minute" {
+  type    = number
+  default = 0
+}

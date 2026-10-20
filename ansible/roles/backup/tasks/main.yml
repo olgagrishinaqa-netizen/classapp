@@ -28,6 +28,13 @@
     mode: "0755"
   when: (classapp_backup_bucket | default('')) | length > 0
 
+- name: Install restore script
+  ansible.builtin.copy:
+    src: classapp-restore.sh
+    dest: /usr/local/bin/classapp-restore
+    mode: "0755"
+  when: (classapp_backup_bucket | default('')) | length > 0
+
 - name: Install backup systemd units
   ansible.builtin.copy:
     dest: "/etc/systemd/system/{{ item.name }}"
@@ -50,7 +57,9 @@
         Description=Nightly classapp backup
 
         [Timer]
-        OnCalendar=*-*-* 02:30:00
+        # Время ВМ — UTC. 18:30 UTC = 21:30 по Минску: за полчаса до ночной остановки ВМ
+        # (terraform/aws/schedule.tf), иначе бэкап пришёлся бы на выключенную машину.
+        OnCalendar=*-*-* 18:30:00
         Persistent=true
 
         [Install]

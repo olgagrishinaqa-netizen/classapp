@@ -64,15 +64,33 @@ Prometheus наружу не публикуется: `ssh -L 9090:127.0.0.1:3090
 
 PostgreSQL работает под управлением Patroni (Zalando Spilo) с etcd для координации, схема
 меняется только миграциями Alembic (Job `classapp-migrate` перед обновлением web). Роль `backup`
-ставит systemd-таймер: каждую ночь `pg_dump` и архив загрузок уходят в S3 (хранение 14 дней,
-доступ через IAM-роль ВМ).
+ставит systemd-таймер: каждую ночь (02:30) `pg_dump` и архив загрузок (включая чеки расходов,
+`/var/lib/classapp/uploads`) уходят в S3, хранение 14 дней, доступ через IAM-роль ВМ.
 
-Восстановление БД:
+На ВМ установлен скрипт `classapp-restore`:
 
 ```bash
-aws s3 cp s3://<бакет>/db/<файл>.sql.gz - | gunzip \
-  | kubectl exec -i <pod-patroni-master> -c patroni -- psql -U postgres classapp
+sudo systemctl start classapp-backup       # сделать бэкап прямо сейчас
+sudo classapp-restore verify               # проверить свежий бэкап во временной БД (боевую не трогает)
+sudo classapp-restore apply                # ВОССТАНОВИТЬ БД и загрузки из свежего бэкапа (данные заменяются!)
+sudo classapp-restore apply <файл.sql.gz>  # из конкретного дампа (aws s3 ls s3://<бакет>/db/)
 ```
+
+Восстановление создаёт базу от `template0`: в `template1` у Spilo уже есть служебные схемы,
+которые есть и в дампе. `apply` на время останавливает web и возвращает его обратно.
+
+## Состояние Terraform
+
+Состояние хранится в S3 (бакет `classapp-tfstate-<account>` с версионированием и шифрованием),
+а не в локальном файле. Бакет создаёт `terraform/bootstrap-state.sh` (вызывается из `make tf-init`
+автоматически) и не удаляется вместе с инфраструктурой. Блокировок нет (оператор один); при
+переходе на Terraform ≥ 1.10 можно добавить `use_lockfile = true`.
+
+## Единственный путь деплоя
+
+Автоматический деплой — только `deploy.yml` (push по SSH после успешной сборки на `main`).
+Pull-таймер `scripts/pull-deploy/` — запасной вариант (если SSH с GitHub недоступен): `install.sh`
+по умолчанию его только устанавливает, но не включает (`sudo bash install.sh --enable`).
 
 ## Локальная разработка
 

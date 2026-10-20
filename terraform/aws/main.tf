@@ -1,6 +1,11 @@
 terraform {
   required_version = ">= 1.6.0"
 
+  # Состояние хранится в S3 (с версионированием). Параметры (бакет с номером
+  # аккаунта и т.д.) передаёт `make tf-init` через -backend-config, т.к. в этом
+  # блоке нельзя использовать переменные. Хранилище создаёт terraform/bootstrap-state.sh.
+  backend "s3" {}
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"

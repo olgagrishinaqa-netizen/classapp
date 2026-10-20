@@ -100,3 +100,31 @@ def test_expenses_page_does_not_create_record_for_unsupported_receipt_extension(
     # Валидация формы возвращает ту же страницу с ошибками, расход не сохраняется.
     assert response.status_code == 200
     assert Expense.query.count() == before_count
+
+
+def test_expense_receipt_is_stored_in_upload_folder_and_requires_login(
+    client, app, tmp_path, monkeypatch
+):
+    monkeypatch.setitem(app.config, "UPLOAD_FOLDER", str(tmp_path))
+    _login_admin_api(client)
+
+    response = client.post(
+        "/expenses",
+        data={
+            "action": "add_expense",
+            "title": "Чек в общем хранилище",
+            "amount": "40.00",
+            "category": "Тест",
+            "receipt": (io.BytesIO(b"%PDF-1.4 test"), "check.pdf"),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 302
+    expense = Expense.query.filter_by(title="Чек в общем хранилище").one()
+    assert expense.receipt_url == f"/uploads/receipts/{expense.receipt_path}"
+    assert (tmp_path / "receipts" / expense.receipt_path).is_file()
+    assert client.get(expense.receipt_url).status_code == 200
+
+    anonymous = app.test_client()
+    assert anonymous.get(expense.receipt_url).status_code == 401

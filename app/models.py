@@ -119,7 +119,7 @@ class Expense(db.Model):
     def receipt_url(self):
         if not self.receipt_path:
             return None
-        return f"/static/uploads/receipts/{self.receipt_path}"
+        return f"/uploads/receipts/{self.receipt_path}"
 
 
 class Task(db.Model):
