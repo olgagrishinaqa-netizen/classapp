@@ -58,8 +58,8 @@ Prometheus наружу не публикуется: `ssh -L 9090:127.0.0.1:3090
 
 | Событие | Что происходит |
 |---|---|
-| коммит в **любую ветку** | `ci.yml`: **lint** (black, isort, flake8, bandit, shellcheck, hadolint, actionlint) · **secrets-scan** (gitleaks) · **dependency-audit** (pip-audit) · **iac** (terraform fmt/validate, ansible-lint, kubeconform, Trivy) · **test** (pytest на SQLite и PostgreSQL, покрытие ≥ 70%) · **migrations** (Alembic на PostgreSQL: накат, проверка расхождения моделей, откат и повторный накат) → **build** (сборка, сканирование образа Trivy, дымовой тест с ограничениями как в Kubernetes, публикация в GHCR с тегом `<ветка>-<sha>`); отчёты тестов сохраняются как артефакты |
-| коммит в **`main`** | после успешного CI `deploy.yml` выкатывает тот же образ на ВМ: миграции Alembic → rollout → проверка `/healthz` изнутри и снаружи, при сбое откат |
+| коммит в **любую ветку** | `ci.yml`: **lint** (black, isort, flake8, bandit, shellcheck, hadolint, actionlint) · **secrets-scan** (gitleaks) · **dependency-audit** (pip-audit) · **iac** (terraform fmt/validate, ansible-lint, kubeconform, Trivy) · **test** (pytest на SQLite и PostgreSQL, покрытие ≥ 70%) · **migrations** (Alembic на PostgreSQL: накат, проверка расхождения моделей, откат и повторный накат) → **build** (сборка, сканирование образа Trivy, дымовой тест с ограничениями как в Kubernetes, SBOM, публикация в GHCR с тегом `<ветка>-<sha>`, подписанные аттестации происхождения и состава образа); отчёты тестов и SBOM сохраняются как артефакты |
+| коммит в **`main`** | после успешного CI `deploy.yml` проверяет подпись происхождения образа и выкатывает его **по неизменяемому дайджесту**: миграции Alembic → rollout всех компонентов → проверка `/healthz` и входа изнутри и снаружи; при сбое **откат всех изменённых компонентов**; уже выкаченный коммит повторно не деплоится |
 | результат | уведомление в Telegram о CI и о деплое (секреты `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) |
 
 Меры безопасности пайплайна: действия GitHub закреплены по SHA коммита, минимальные права токена, имена веток не подставляются

@@ -19,6 +19,8 @@ on:
 
 permissions:
   contents: read
+  packages: read # читать образ в GHCR (дайджест)
+  attestations: read # проверять подпись происхождения образа
 
 # Два деплоя одновременно недопустимы; начатый деплой не прерываем.
 concurrency:
@@ -40,6 +42,7 @@ jobs:
       SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
       COMMIT_SHA: ${{ github.event.workflow_run.head_sha || inputs.sha }}
       OWNER: ${{ github.repository_owner }}
+      EVENT: ${{ github.event_name }}
     steps:
       - name: Validate inputs
         run: |
@@ -53,6 +56,30 @@ jobs:
         with:
           ref: ${{ env.COMMIT_SHA }}
 
+      - name: Resolve image digest (immutable id of the image to deploy)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${OWNER,,}/classapp"
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          digest="$(docker buildx imagetools inspect "${image}:main-${COMMIT_SHA}" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          if ! printf '%s' "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
+            echo "::error::не удалось получить дайджест образа ${image}:main-${COMMIT_SHA} (образ ещё не опубликован?)"; exit 1
+          fi
+          echo "IMAGE_DIGEST=${digest}" >> "$GITHUB_ENV"
+          echo "Образ: ${image}@${digest}"
+
+      - name: Verify image provenance (built by our CI from this repository)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh attestation verify "oci://ghcr.io/${OWNER,,}/classapp@${IMAGE_DIGEST}" \
+            --repo "$REPO" --signer-workflow "${REPO}/.github/workflows/ci.yml"
+
       - name: Prepare SSH
         env:
           SSH_KEY: ${{ secrets.SSH_KEY }}
@@ -62,12 +89,11 @@ jobs:
           umask 077
           install -d -m 700 "$HOME/.ssh"
           printf '%s\n' "$SSH_KEY" > "$HOME/.ssh/classapp_deploy_key"
-          if [ -n "${SSH_KNOWN_HOSTS:-}" ]; then
-            printf '%s\n' "$SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
-          else
-            echo "::warning::SSH_KNOWN_HOSTS не задан: отпечаток ВМ берётся при первом подключении (риск MITM). Выполните 'make github-secrets'."
-            ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" > "$HOME/.ssh/known_hosts" 2>/dev/null || true
+          if [ -z "${SSH_KNOWN_HOSTS:-}" ]; then
+            echo "::error::Секрет SSH_KNOWN_HOSTS не задан: без отпечатка ВМ подключаться небезопасно. Выполните 'make github-secrets'."
+            exit 1
           fi
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
           cat > "$HOME/.ssh/config" <<SSHCONF
           Host prod
             HostName $SSH_HOST
@@ -101,7 +127,16 @@ jobs:
           echo "::error::SSH недоступен. Если ВМ выключена по расписанию — запустите её (make start) и перезапустите workflow."
           exit 1
 
+      - name: Skip if this commit is already deployed
+        run: |
+          deployed="$(ssh prod 'cat /var/lib/classapp-deploy/deployed_sha 2>/dev/null || true')"
+          if [ "$deployed" = "$COMMIT_SHA" ] && [ "$EVENT" != "workflow_dispatch" ]; then
+            echo "::notice::Коммит ${COMMIT_SHA} уже выкачен на ВМ — повторный деплой пропущен."
+            echo "SKIP_DEPLOY=true" >> "$GITHUB_ENV"
+          fi
+
       - name: Upload manifests and deploy scripts
+        if: env.SKIP_DEPLOY != 'true'
         run: |
           set -euo pipefail
           for n in 1 2 3 4 5; do
@@ -114,12 +149,13 @@ jobs:
           exit 1
 
       - name: Deploy to K3s
+        if: env.SKIP_DEPLOY != 'true'
         run: |
           set -euo pipefail
           image_repo="${OWNER,,}/classapp"
           for n in 1 2 3; do
             # shellcheck disable=SC2029  # значения подставляются на клиенте намеренно (SHA провалидирован)
-            if ssh prod "sudo IMAGE_REPO='${image_repo}' SRC_DIR=/opt/classapp/repo bash /opt/classapp/repo/scripts/pull-deploy/deploy-steps.sh '${COMMIT_SHA}'"; then
+            if ssh prod "sudo IMAGE_REPO='${image_repo}' IMAGE_DIGEST='${IMAGE_DIGEST}' SRC_DIR=/opt/classapp/repo bash /opt/classapp/repo/scripts/pull-deploy/deploy-steps.sh '${COMMIT_SHA}'"; then
               exit 0
             fi
             echo "Попытка $n не удалась, повтор через 20 с"; sleep 20

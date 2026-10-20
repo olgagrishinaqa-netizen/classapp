@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 # Применение манифестов K3s для коммита $1. Запускается pull-deploy.sh от root на ВМ.
+#
+# Образ берётся по неизменяемому дайджесту, если задан IMAGE_DIGEST (sha256:...), иначе по тегу main-<sha>.
+# При любой ошибке откатываются ВСЕ компоненты, которые этот деплой успел изменить (etcd, Patroni, nginx, web);
+# миграции БД автоматически не откатываются (они должны быть обратно совместимы).
 set -euo pipefail
 
 COMMIT_SHA="${1:?usage: deploy-steps.sh <commit-sha>}"
@@ -7,8 +11,56 @@ IMAGE_REPO="${IMAGE_REPO:-olgagrishinaqa-netizen/classapp}"
 SRC_DIR="${SRC_DIR:-/opt/classapp/repo}"
 export KUBECONFIG="${KUBECONFIG:-/etc/rancher/k3s/k3s.yaml}"
 KUBE="kubectl"
-K8S_IMAGE="ghcr.io/${IMAGE_REPO}:main-${COMMIT_SHA}"
+IMAGE_DIGEST="${IMAGE_DIGEST:-}"
+if [ -n "$IMAGE_DIGEST" ]; then
+  [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "IMAGE_DIGEST имеет неверный формат"; exit 1; }
+  K8S_IMAGE="ghcr.io/${IMAGE_REPO}@${IMAGE_DIGEST}"
+else
+  K8S_IMAGE="ghcr.io/${IMAGE_REPO}:main-${COMMIT_SHA}"
+fi
 K8S_DIR="$SRC_DIR/k8s"
+STATE_DIR="${STATE_DIR:-/var/lib/classapp-deploy}"
+
+# --- Откат: запоминаем версии компонентов ДО деплоя -------------------------------------------
+# Порядок: от зависимостей к потребителям (для отката используется обратный порядок).
+WORKLOADS="deployment/etcd statefulset/classapp-patroni deployment/classapp-nginx deployment/classapp-web"
+declare -A REV_BEFORE
+
+rev_of() { # номер ревизии Deployment / идентификатор ревизии StatefulSet (пусто, если объекта ещё нет)
+  case "$1" in
+    deployment/*) $KUBE get "$1" -n default -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}' 2>/dev/null || true ;;
+    statefulset/*) $KUBE get "$1" -n default -o jsonpath='{.status.updateRevision}' 2>/dev/null || true ;;
+  esac
+}
+
+for w in $WORKLOADS; do REV_BEFORE[$w]="$(rev_of "$w")"; done
+
+rollback_changed() {
+  echo "ОТКАТ: возвращаю компоненты, изменённые этим деплоем, на прежнюю версию"
+  local w now before
+  for w in $(printf '%s\n' $WORKLOADS | tac); do
+    before="${REV_BEFORE[$w]:-}"
+    now="$(rev_of "$w")"
+    if [ -n "$before" ] && [ -n "$now" ] && [ "$now" != "$before" ]; then
+      echo "  откат $w ($now -> $before)"
+      case "$w" in
+        deployment/*) $KUBE rollout undo "$w" -n default --to-revision="$before" || true ;;
+        statefulset/*) $KUBE rollout undo "$w" -n default || true ;;
+      esac
+    fi
+  done
+  for w in $WORKLOADS; do $KUBE rollout status "$w" -n default --timeout=180s || true; done
+}
+
+rollout_wait() { # rollout_wait <объект> <таймаут, сек>
+  if ! $KUBE rollout status "$1" -n default --timeout="${2}s"; then
+    echo "$1 не стал готовым за ${2} с"
+    $KUBE get pods -n default -o wide || true
+    $KUBE describe "$1" -n default | tail -25 || true
+    rollback_changed
+    exit 1
+  fi
+}
 
 mkdir -p /var/log/classapp /var/log/nginx
 chmod 755 /var/log/classapp /var/log/nginx
@@ -43,6 +95,7 @@ for i in $(seq 1 225); do
     $KUBE get pods -l app.kubernetes.io/name=patroni -n default || true
     $KUBE describe pods -l app.kubernetes.io/name=patroni -n default | tail -40 || true
     $KUBE logs classapp-patroni-0 --all-containers=true --tail=60 -n default || true
+    rollback_changed
     exit 1
   fi
   [ $((i % 15)) -eq 0 ] && $KUBE get pods -l app.kubernetes.io/name=patroni -n default || true
@@ -75,26 +128,43 @@ if ! $KUBE wait --for=condition=complete job/classapp-migrate -n default --timeo
   $KUBE get pods -l job-name=classapp-migrate -n default -o wide || true
   $KUBE describe pods -l job-name=classapp-migrate -n default | tail -30 || true
   $KUBE logs job/classapp-migrate --all-containers=true -n default || true
+  rollback_changed
   exit 1
 fi
 
 echo "ШАГ 6: web + nginx через kustomize"
-sed -i "s#newTag:.*#newTag: main-${COMMIT_SHA}#" "$K8S_DIR/kustomization.yaml"
+if [ -n "$IMAGE_DIGEST" ]; then
+  sed -i "s#newTag:.*#digest: ${IMAGE_DIGEST}#" "$K8S_DIR/kustomization.yaml"
+else
+  sed -i "s#newTag:.*#newTag: main-${COMMIT_SHA}#" "$K8S_DIR/kustomization.yaml"
+fi
 $KUBE apply -k "$K8S_DIR"
 $KUBE set image deployment/classapp-web classapp-web="$K8S_IMAGE" -n default
 
-echo "ШАГ 7: rollout"
-if ! $KUBE rollout status deployment/classapp-web -n default --timeout=300s; then
-  $KUBE get pods -l app.kubernetes.io/name=classapp-web -n default || true
-  $KUBE rollout undo deployment/classapp-web -n default || true
-  exit 1
-fi
+echo "ШАГ 7: rollout всех компонентов и проверка работоспособности"
+rollout_wait deployment/etcd 180
+rollout_wait statefulset/classapp-patroni 600
+rollout_wait deployment/classapp-nginx 180
+rollout_wait deployment/classapp-web 300
 sleep 10
+HEALTHY=0
 for i in $(seq 1 15); do
-  curl -fsS --max-time 5 http://127.0.0.1:30080/healthz >/dev/null 2>&1 && { echo "healthz OK"; break; }
-  [ "$i" -eq 15 ] && echo "healthz не ответил, но rollout завершён"
+  if curl -fsS --max-time 5 http://127.0.0.1:30080/healthz | grep -q '"database":"ok"' \
+     && [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:30080/login)" = "200" ]; then
+    HEALTHY=1; echo "healthz и страница входа OK"; break
+  fi
   sleep 4
 done
+if [ "$HEALTHY" -ne 1 ]; then
+  echo "приложение не прошло проверку работоспособности после раскатки"
+  rollback_changed
+  exit 1
+fi
+
+# Запоминаем, что именно выкачено (по этому файлу workflow пропускает повторный деплой того же коммита).
+mkdir -p "$STATE_DIR"
+echo "$COMMIT_SHA" > "$STATE_DIR/deployed_sha"
+echo "$K8S_IMAGE" > "$STATE_DIR/deployed_image"
 
 echo "ШАГ 8: аннотация деплоя в Grafana (необязательный шаг, ошибки не критичны)"
 # Вертикальная метка «деплой» на графиках дашбордов. Пароль берётся из секрета
