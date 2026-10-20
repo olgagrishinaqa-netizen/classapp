@@ -3,14 +3,14 @@ from app.models import LoginEvent, User
 
 
 def _login_admin(client):
-    client.post("/login", data={"username": "79990000000", "password": "admin123"})
+    client.post("/login", data={"username": "375290000000", "password": "admin123"})
 
 
 def test_login_events_are_stored_in_database(client, db):
     LoginEvent.query.delete()
     db.session.commit()
-    client.post("/login", data={"username": "79990000000", "password": "wrong-pass"})
-    client.post("/login", data={"username": "79990000000", "password": "admin123"})
+    client.post("/login", data={"username": "375290000000", "password": "wrong-pass"})
+    client.post("/login", data={"username": "375290000000", "password": "admin123"})
     client.post("/logout")
 
     events = [e.event for e in LoginEvent.query.order_by(LoginEvent.id)]
@@ -27,7 +27,7 @@ def test_admin_sees_login_log_with_names(client, db):
     LoginEvent.query.delete()
     db.session.commit()
     _login_admin(client)
-    admin = User.query.filter_by(phone="79990000000").one()
+    admin = User.query.filter_by(phone="375290000000").one()
 
     page = client.get("/admin/login-log")
     assert page.status_code == 200
@@ -35,14 +35,14 @@ def test_admin_sees_login_log_with_names(client, db):
     assert admin.full_name in html
     assert "Вход" in html
     assert "***0000" in html
-    assert "79990000000" not in html
+    assert "375290000000" not in html
 
 
 def test_login_log_filter_shows_only_failed(client, db):
     LoginEvent.query.delete()
     db.session.commit()
-    client.post("/login", data={"username": "79990000000", "password": "wrong-pass"})
-    client.post("/login", data={"username": "79990000000", "password": "admin123"})
+    client.post("/login", data={"username": "375290000000", "password": "wrong-pass"})
+    client.post("/login", data={"username": "375290000000", "password": "admin123"})
 
     html = client.get("/admin/login-log?filter=failed").get_data(as_text=True)
     assert "Неудачный вход" in html

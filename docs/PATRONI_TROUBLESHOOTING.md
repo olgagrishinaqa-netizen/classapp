@@ -385,7 +385,7 @@ kubectl get secret classapp-secrets -o yaml
 kubectl create secret generic classapp-secrets \
   --from-literal=db-password='CHANGE_ME' \
   --from-literal=secret-key='CHANGE_ME' \
-  --from-literal=admin-phone='79990000000' \
+  --from-literal=admin-phone='375290000000' \
   --from-literal=admin-password='CHANGE_ME' \
   --from-literal=database-url='postgresql://postgres:CHANGE_ME@classapp-db-master:5432/classapp?sslmode=require' \
   --dry-run=client -o yaml | kubectl apply -f -

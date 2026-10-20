@@ -91,7 +91,7 @@ def create_app(config_object=None):
         if app.config.get("AUTO_CREATE_SCHEMA", app.testing or app.debug):
             db.create_all()
         if inspect(db.engine).has_table(User.__tablename__):
-            admin_phone = User.normalize_phone(app.config.get("ADMIN_PHONE", "79990000000"))
+            admin_phone = User.normalize_phone(app.config.get("ADMIN_PHONE", "375290000000"))
             admin_name = app.config.get("ADMIN_NAME", "Администратор")
             admin_password = app.config.get("ADMIN_PASSWORD", "admin123")
             reset_admin_password = bool(app.config.get("ADMIN_RESET_PASSWORD_ON_BOOT", False))

@@ -4,7 +4,7 @@ from app.models import Expense, User
 
 
 def _login_admin_api(client):
-    response = client.post("/api/login", json={"phone": "79990000000", "password": "admin123"})
+    response = client.post("/api/login", json={"phone": "375290000000", "password": "admin123"})
     assert response.status_code == 200
 
 
@@ -21,7 +21,7 @@ def test_uploads_endpoint_requires_authentication(client):
 
 def test_api_prevents_demoting_last_admin(client, db):
     _login_admin_api(client)
-    admin = User.query.filter_by(phone="79990000000").one()
+    admin = User.query.filter_by(phone="375290000000").one()
 
     response = client.put(f"/api/users/{admin.id}", json={"role": "parent"})
 
@@ -33,7 +33,7 @@ def test_api_prevents_demoting_last_admin(client, db):
 
 def test_page_prevents_demoting_last_admin(client, db):
     _login_admin_api(client)
-    admin = User.query.filter_by(phone="79990000000").one()
+    admin = User.query.filter_by(phone="375290000000").one()
 
     response = client.post(
         f"/users/{admin.id}/role", data={"role": "parent"}, follow_redirects=False

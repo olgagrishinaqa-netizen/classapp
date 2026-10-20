@@ -5,14 +5,18 @@ from app.models import Expense, ExpenseReport, News, Payment, Student, Task, Use
 
 
 def test_login_accepts_common_phone_formats(client):
-    for phone in ["79990000000", "+7 (999) 000-00-00", "89990000000"]:
+    for phone in ["375290000000", "+375 (29) 000-00-00", "375 29 000 00 00"]:
         response = client.post(
             "/api/login",
             json={"phone": phone, "password": "admin123"},
         )
         assert response.status_code == 200, phone
         payload = response.get_json()
-        assert payload["user"]["phone"] == "79990000000"
+        assert payload["user"]["phone"] == "375290000000"
+
+
+def test_normalize_phone_converts_leading_eight_to_seven():
+    assert User.normalize_phone("8 (916) 123-45-67") == "79161234567"
 
 
 def test_mobile_pages_render_and_use_server_forms(client, db):
@@ -23,7 +27,7 @@ def test_mobile_pages_render_and_use_server_forms(client, db):
 
     login = client.post(
         "/login",
-        data={"username": "+7 (999) 000-00-00", "password": "admin123"},
+        data={"username": "+375 (29) 000-00-00", "password": "admin123"},
         follow_redirects=False,
     )
     assert login.status_code == 302
@@ -56,7 +60,7 @@ def test_mobile_pages_render_and_use_server_forms(client, db):
 
 
 def test_admin_can_record_payment_and_expense(client, db):
-    client.post("/login", data={"username": "79990000000", "password": "admin123"})
+    client.post("/login", data={"username": "375290000000", "password": "admin123"})
     student = Student(last_name="Взносов", first_name="Стёпа")
     db.session.add(student)
     db.session.commit()
@@ -84,7 +88,7 @@ def test_admin_can_record_payment_and_expense(client, db):
 
 
 def test_payment_form_lists_class_roster_and_shows_payer_name(client, db):
-    client.post("/login", data={"username": "79990000000", "password": "admin123"})
+    client.post("/login", data={"username": "375290000000", "password": "admin123"})
     student = Student(last_name="Ромашкин", first_name="Гриша")
     db.session.add(student)
     db.session.commit()
@@ -101,7 +105,7 @@ def test_payment_form_lists_class_roster_and_shows_payer_name(client, db):
 
 
 def test_finance_records_can_be_edited_only_by_an_administrator(client, db):
-    client.post("/login", data={"username": "79990000000", "password": "admin123"})
+    client.post("/login", data={"username": "375290000000", "password": "admin123"})
     parent = User(full_name="Родитель взноса", phone="79991234563", role="parent")
     parent.set_password("secure-pass")
     student = Student(last_name="Взносов", first_name="Егор")
@@ -142,7 +146,7 @@ def test_finance_records_can_be_edited_only_by_an_administrator(client, db):
 def test_dashboard_news_users_and_profile_role_mode(client, db):
     login = client.post(
         "/login",
-        data={"username": "79990000000", "password": "admin123"},
+        data={"username": "375290000000", "password": "admin123"},
         follow_redirects=False,
     )
     assert login.status_code == 302
@@ -176,7 +180,7 @@ def test_dashboard_news_users_and_profile_role_mode(client, db):
 
 
 def test_user_management_creates_sorts_filters_edits_and_deletes_users(client, db):
-    client.post("/login", data={"username": "79990000000", "password": "admin123"})
+    client.post("/login", data={"username": "375290000000", "password": "admin123"})
 
     create_student = client.post(
         "/users",
@@ -235,11 +239,11 @@ def test_user_management_creates_sorts_filters_edits_and_deletes_users(client, d
 
 
 def test_login_updates_last_login(client, db):
-    admin = User.query.filter_by(phone="79990000000").one()
+    admin = User.query.filter_by(phone="375290000000").one()
     admin.last_login = None
     db.session.commit()
 
-    response = client.post("/api/login", json={"phone": "79990000000", "password": "admin123"})
+    response = client.post("/api/login", json={"phone": "375290000000", "password": "admin123"})
 
     assert response.status_code == 200
     assert db.session.get(User, admin.id).last_login is not None
@@ -258,7 +262,7 @@ def test_user_creation_normalizes_phone(db):
 def test_admin_can_create_parent_from_user_form(client, db):
     login = client.post(
         "/api/login",
-        json={"phone": "79990000000", "password": "admin123"},
+        json={"phone": "375290000000", "password": "admin123"},
     )
     assert login.status_code == 200
 
@@ -280,7 +284,7 @@ def test_admin_can_create_parent_from_user_form(client, db):
 def test_admin_can_create_parent_with_russian_role_name(client, db):
     login = client.post(
         "/api/login",
-        json={"phone": "79990000000", "password": "admin123"},
+        json={"phone": "375290000000", "password": "admin123"},
     )
     assert login.status_code == 200
 
@@ -343,13 +347,13 @@ def test_admin_password_is_not_reset_on_bootstrap_by_default(tmp_path):
         WTF_CSRF_ENABLED = False
         SQLALCHEMY_DATABASE_URI = f"sqlite:///{db_path}"
         SQLALCHEMY_TRACK_MODIFICATIONS = False
-        ADMIN_PHONE = "79990000000"
+        ADMIN_PHONE = "375290000000"
         ADMIN_NAME = "Администратор"
         ADMIN_PASSWORD = "admin123"
 
     app = create_app(config_object=BootstrapConfig)
     with app.app_context():
-        admin = User.query.filter_by(phone="79990000000").first()
+        admin = User.query.filter_by(phone="375290000000").first()
         admin.set_password("wrong-password")
         from app.extensions import db
 
@@ -357,7 +361,7 @@ def test_admin_password_is_not_reset_on_bootstrap_by_default(tmp_path):
 
     app = create_app(config_object=BootstrapConfig)
     with app.app_context():
-        admin = User.query.filter_by(phone="79990000000").first()
+        admin = User.query.filter_by(phone="375290000000").first()
         assert admin is not None
         assert admin.check_password("wrong-password")
 
@@ -372,14 +376,14 @@ def test_admin_password_can_be_reset_on_bootstrap_when_enabled(tmp_path):
         WTF_CSRF_ENABLED = False
         SQLALCHEMY_DATABASE_URI = f"sqlite:///{db_path}"
         SQLALCHEMY_TRACK_MODIFICATIONS = False
-        ADMIN_PHONE = "79990000000"
+        ADMIN_PHONE = "375290000000"
         ADMIN_NAME = "Администратор"
         ADMIN_PASSWORD = "admin123"
         ADMIN_RESET_PASSWORD_ON_BOOT = True
 
     app = create_app(config_object=BootstrapConfig)
     with app.app_context():
-        admin = User.query.filter_by(phone="79990000000").first()
+        admin = User.query.filter_by(phone="375290000000").first()
         admin.set_password("wrong-password")
         from app.extensions import db
 
@@ -387,7 +391,7 @@ def test_admin_password_can_be_reset_on_bootstrap_when_enabled(tmp_path):
 
     app = create_app(config_object=BootstrapConfig)
     with app.app_context():
-        admin = User.query.filter_by(phone="79990000000").first()
+        admin = User.query.filter_by(phone="375290000000").first()
         assert admin is not None
         assert admin.check_password("admin123")
 
@@ -403,7 +407,7 @@ def test_admin_bootstrap_is_skipped_when_user_table_does_not_exist(tmp_path):
         SQLALCHEMY_DATABASE_URI = f"sqlite:///{db_path}"
         SQLALCHEMY_TRACK_MODIFICATIONS = False
         AUTO_CREATE_SCHEMA = False
-        ADMIN_PHONE = "79990000000"
+        ADMIN_PHONE = "375290000000"
         ADMIN_NAME = "Администратор"
         ADMIN_PASSWORD = "admin123"
 

@@ -11,7 +11,7 @@ class BaseConfig:
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
     ADMIN_NAME = os.getenv("ADMIN_NAME", "Администратор")
-    ADMIN_PHONE = os.getenv("ADMIN_PHONE", "79990000000")
+    ADMIN_PHONE = os.getenv("ADMIN_PHONE", "375290000000")
     ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
     ADMIN_RESET_PASSWORD_ON_BOOT = str(
         os.getenv("ADMIN_RESET_PASSWORD_ON_BOOT", "False")

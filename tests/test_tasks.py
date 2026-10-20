@@ -4,7 +4,7 @@ from app.models import Task, User
 
 
 def _login_admin(client):
-    client.post("/login", data={"username": "79990000000", "password": "admin123"})
+    client.post("/login", data={"username": "375290000000", "password": "admin123"})
 
 
 def test_admin_can_create_task_with_all_fields(client, db):
@@ -119,7 +119,7 @@ def test_active_tasks_are_sorted_by_priority_then_nearest_deadline(client, db):
 
 
 def test_api_create_task_accepts_deadline(client, db):
-    login = client.post("/api/login", json={"phone": "79990000000", "password": "admin123"})
+    login = client.post("/api/login", json={"phone": "375290000000", "password": "admin123"})
     assert login.status_code == 200
 
     response = client.post(

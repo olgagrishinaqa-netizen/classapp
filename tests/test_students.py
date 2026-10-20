@@ -2,7 +2,7 @@ from app.models import Student, User
 
 
 def _login_admin(client):
-    client.post("/login", data={"username": "79990000000", "password": "admin123"})
+    client.post("/login", data={"username": "375290000000", "password": "admin123"})
 
 
 def test_admin_can_edit_student(client, db):

@@ -19,7 +19,7 @@ import random
 
 from locust import HttpUser, between, task
 
-LOGIN_PHONE = os.environ.get("LOAD_TEST_PHONE", "79990000000")
+LOGIN_PHONE = os.environ.get("LOAD_TEST_PHONE", "375290000000")
 LOGIN_PASSWORD = os.environ.get("LOAD_TEST_PASSWORD", "admin123")
 
 

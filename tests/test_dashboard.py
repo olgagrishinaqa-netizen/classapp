@@ -2,7 +2,7 @@ from app.models import Expense, News, NewsImage
 
 
 def _login_admin(client):
-    client.post("/login", data={"username": "79990000000", "password": "admin123"})
+    client.post("/login", data={"username": "375290000000", "password": "admin123"})
 
 
 def test_dashboard_shows_latest_news_image(client, db):
