@@ -128,7 +128,7 @@ jobs:
 
       - name: Verify from outside (public entry point)
         run: |
-          curl -fsS --max-time 15 --retry 10 --retry-delay 6 --retry-connrefused "http://${SSH_HOST}/healthz"
+          curl -fsS --max-time 15 --retry 10 --retry-delay 6 --retry-connrefused --retry-all-errors "http://${SSH_HOST}/healthz"
 
       - name: Notify deploy result
         if: always()

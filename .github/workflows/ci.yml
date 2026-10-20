@@ -307,7 +307,7 @@ jobs:
             -e ADMIN_PHONE=375290000000 -e ADMIN_PASSWORD=ci-admin-password \
             classapp:ci gunicorn -w 1 -b 0.0.0.0:8000 "app:create_app()"
 
-          curl -fsS --retry 30 --retry-delay 2 --retry-connrefused http://127.0.0.1:8000/healthz | tee /tmp/health.json
+          curl -fsS --retry 30 --retry-delay 2 --retry-connrefused --retry-all-errors http://127.0.0.1:8000/healthz | tee /tmp/health.json
           grep -q '"database":"ok"' /tmp/health.json
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/login)" = "200"
           test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
