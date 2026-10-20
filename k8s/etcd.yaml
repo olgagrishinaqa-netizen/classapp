@@ -20,10 +20,11 @@ spec:
         app.kubernetes.io/name: etcd
         app.kubernetes.io/part-of: classapp
     spec:
+      # runAsGroup НЕ задаём: в образе bitnami каталог данных доступен группе 0 (gid процесса по умолчанию);
+      # с runAsGroup: 1001 процесс терял эту группу, не мог писать данные и etcd зависал при старте.
       securityContext:
         runAsNonRoot: true
         runAsUser: 1001
-        runAsGroup: 1001
         seccompProfile:
           type: RuntimeDefault
       tolerations:
