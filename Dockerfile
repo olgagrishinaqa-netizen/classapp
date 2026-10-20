@@ -13,7 +13,10 @@ RUN mkdir -p /var/log/classapp /tmp/prometheus_multiproc \
     && chown -R appuser:appuser /var/log/classapp /tmp/prometheus_multiproc
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# setuptools и wheel нужны только для сборки; в рантайме приложению они не требуются, а их встроенные
+# копии пакетов дают уязвимости (Trivy). Удаляем из итогового образа.
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip uninstall -y setuptools wheel
 
 # Копируем файлы проекта с автоматическим назначением прав пользователю appuser
 COPY --chown=appuser:appuser . .
