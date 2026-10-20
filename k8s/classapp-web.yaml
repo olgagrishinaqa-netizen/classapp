@@ -92,12 +92,6 @@ spec:
               mountPath: /var/log/classapp
             - name: classapp-uploads
               mountPath: /uploads
-            # Форма /expenses сохраняет чеки по захардкоженному в коде пути
-            # app.root_path/static/uploads (а не через UPLOAD_FOLDER) —
-            # монтируем тот же постоянный том и туда, чтобы обе точки загрузки
-            # писали на один и тот же диск на хосте.
-            - name: classapp-uploads
-              mountPath: /app/app/static/uploads
           readinessProbe:
             httpGet:
               path: /healthz

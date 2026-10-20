@@ -18,7 +18,8 @@ CI/CD, Kubernetes, отказоустойчивая БД, мониторинг �
 | `scripts/pull-deploy/` | шаги деплоя (`deploy-steps.sh`); запасной pull-деплой на ВМ |
 | `.github/workflows/` | CI/CD: `ci.yml`, `build.yml`, `deploy.yml` |
 | `monitoring/`, `provisioning/`, `docker-compose.*.yml` | локальные стеки Prometheus/Grafana/Loki |
-| `docs/` | заметки по защите и разбору проблем (Patroni/etcd) |
+| `docs/guide/` | **учебное руководство по каждой папке и файлу** (читать с [docs/guide/README.md](docs/guide/README.md)) |
+| `docs/` | шпаргалка к защите, разбор проблем Patroni/etcd |
 
 ## Развёртывание с нуля одной командой
 
