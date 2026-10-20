@@ -41,7 +41,7 @@
   when: swap_size_gb | int > 0
 
 - name: Activate swap
-  ansible.builtin.shell: swapon --show=NAME --noheadings | grep -qx /swapfile || swapon /swapfile
+  ansible.builtin.shell: set -o pipefail; swapon --show=NAME --noheadings | grep -qx /swapfile || swapon /swapfile
   args:
     executable: /bin/bash
   changed_when: false

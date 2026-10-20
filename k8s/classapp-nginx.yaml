@@ -93,6 +93,10 @@ spec:
   # (единственная нода кластера), и два пода не могут забронировать один и
   # тот же порт 80 хоста одновременно.
   replicas: 1
+  # hostPort 80 держит старый под, пока он жив: при RollingUpdate новый под не смог бы
+  # запуститься (порт занят), раскатка зависла бы. Recreate: сначала остановить, потом запустить.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: classapp-nginx
@@ -102,6 +106,13 @@ spec:
         app.kubernetes.io/name: classapp-nginx
         app.kubernetes.io/part-of: classapp
     spec:
+      # nginx слушает 8080 (не привилегированный порт), поэтому root не нужен: пользователь nginx (uid 101).
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
       tolerations:
       - key: node-role.kubernetes.io/control-plane
         operator: Exists
@@ -113,6 +124,11 @@ spec:
         - name: nginx
           image: nginx:1.25-alpine
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           ports:
             - name: http
               containerPort: 8080
@@ -134,6 +150,11 @@ spec:
               subPath: nginx.conf
             - name: nginx-logs
               mountPath: /var/log/nginx
+            # При read-only корне nginx пишет временные файлы и pid только сюда.
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-tmp
+              mountPath: /tmp
           readinessProbe:
             httpGet:
               path: /
@@ -147,6 +168,10 @@ spec:
           configMap:
             name: classapp-nginx-config
         - name: nginx-logs
+          emptyDir: {}
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-tmp
           emptyDir: {}
 ---
 apiVersion: v1

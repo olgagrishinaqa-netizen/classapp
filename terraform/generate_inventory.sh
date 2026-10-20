@@ -22,7 +22,7 @@ elif [ -f "${HOME}/.ssh/id_ed25519" ]; then
 elif [ -f "${HOME}/.ssh/id_rsa" ]; then
     SSH_KEY="${HOME}/.ssh/id_rsa"
 else
-    SSH_KEY="~/.ssh/id_ed25519"
+    SSH_KEY="${HOME}/.ssh/id_ed25519"
     echo "⚠️  Не найден ни id_ed25519, ни id_rsa в ~/.ssh — впишите путь к ключу в hosts.ini вручную." >&2
 fi
 

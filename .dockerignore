@@ -1,0 +1,46 @@
+# В образ попадает только то, что нужно приложению. Всё остальное (в том числе секреты и
+# состояние инфраструктуры, которые лежат рядом в рабочей папке) исключается.
+.git
+.github
+.claude
+.venv
+venv
+__pycache__
+**/__pycache__
+*.pyc
+.pytest_cache
+.coverage
+htmlcov
+reports
+
+# секреты и состояние инфраструктуры
+.env
+.env.*
+*.tfstate
+*.tfstate.*
+*.tfvars
+**/.terraform
+ansible/last-run.log
+ansible/group_vars/vault.yml
+ansible/inventory/hosts.ini
+
+# локальные данные
+instance
+uploads
+
+# не нужно в рантайме
+tests
+docs
+terraform
+infra
+ansible
+k8s
+scripts
+monitoring
+provisioning
+Makefile
+README.md
+docker-compose*.yml
+promtail-config.yml
+nginx.conf
+requirements-dev.txt

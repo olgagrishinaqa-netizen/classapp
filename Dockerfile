@@ -1,9 +1,10 @@
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-RUN adduser --disabled-password --gecos '' appuser
+# Явный uid 1000: на него ссылаются манифесты Kubernetes (runAsUser) и права на каталоги.
+RUN adduser --disabled-password --gecos '' --uid 1000 appuser
 WORKDIR /app
 
 # Сразу настраиваем права на рабочую директорию для нашего пользователя
@@ -21,10 +22,13 @@ COPY --chown=appuser:appuser . .
 COPY --chown=appuser:appuser entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-USER appuser
+USER 1000:1000
 
 ENV FLASK_CONFIG=config.ProdConfig \
     PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus_multiproc
 EXPOSE 8000
+# Для запуска вне Kubernetes (в K8s работают собственные пробы readiness/liveness).
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+  CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8000", "app:create_app()"]

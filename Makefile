@@ -5,6 +5,7 @@
 #   make configure только Ansible (inventory + playbook)
 #   make deploy    только деплой приложения (манифесты k8s, миграции, rollout)
 #   make start|stop|status  вручную запустить/остановить ВМ (по умолчанию её включает и выключает расписание)
+#   make github-secrets     записать в GitHub секреты SSH_HOST и SSH_KNOWN_HOSTS (нужен gh)
 #   make destroy   удалить инфраструктуру (непустой S3-бакет с бэкапами Terraform не удалит — это защита)
 #   make check     проверки, как в CI (линтер, тесты, terraform validate, ansible-lint)
 #
@@ -21,9 +22,10 @@ GIT_BRANCH  ?= main
 AWS_REGION  ?= eu-north-1
 # make configure MONITORING=true — поставить Prometheus/Grafana (на 2 ГБ RAM не помещается)
 MONITORING  ?= false
+FORCE       ?= 0
 SSH_OPTS    := -i $(SSH_KEY) -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20
 
-.PHONY: up infra tf-init configure deploy destroy check preflight start stop status
+.PHONY: up infra tf-init configure deploy destroy check preflight start stop status github-secrets
 
 up: preflight infra configure deploy
 	@echo
@@ -43,9 +45,11 @@ tf-init:
 	BACKEND_ARGS="$$(./terraform/bootstrap-state.sh)"; \
 	terraform -chdir=$(TF_DIR) init -input=false -migrate-state -force-copy $$BACKEND_ARGS
 
+# Применяется сохранённый план; если он удаляет/пересоздаёт ресурсы — спросит подтверждение
+# (make infra FORCE=1 — без вопросов).
 infra: tf-init
-	TF_VAR_ssh_public_key="$$(cat $(SSH_PUBKEY))" \
-	  terraform -chdir=$(TF_DIR) apply -input=false -auto-approve
+	TF_VAR_ssh_public_key="$$(cat $(SSH_PUBKEY))" FORCE=$(FORCE) \
+	  ./terraform/safe-apply.sh $(TF_DIR)
 
 configure:
 	ANSIBLE_SSH_PRIVATE_KEY_FILE=$(SSH_KEY) ./terraform/generate_inventory.sh
@@ -71,6 +75,15 @@ deploy: tf-init
 	  "sudo IMAGE_REPO='$$(git remote get-url origin | sed -E 's#.*github.com[:/]([^.]+)(\.git)?#\1#' | tr A-Z a-z)' \
 	   SRC_DIR=/opt/classapp/repo bash /opt/classapp/repo/scripts/pull-deploy/deploy-steps.sh $$SHA"
 
+# Прописывает в GitHub секреты деплоя: адрес ВМ и её SSH-отпечаток (защита от подмены сервера).
+# Нужен gh (gh auth login). Приватный ключ SSH_KEY один раз добавьте вручную:  gh secret set SSH_KEY < ~/.ssh/id_rsa
+github-secrets: tf-init
+	@command -v gh >/dev/null || { echo "Нужен GitHub CLI: gh auth login"; exit 1; }
+	@HOST="$$(terraform -chdir=$(TF_DIR) output -raw master1_static_ip)"; \
+	gh secret set SSH_HOST --body "$$HOST"; \
+	ssh-keyscan -H "$$HOST" 2>/dev/null | gh secret set SSH_KNOWN_HOSTS; \
+	echo "Секреты SSH_HOST и SSH_KNOWN_HOSTS обновлены для $$HOST"
+
 start:
 	aws ec2 start-instances --region $(AWS_REGION) --instance-ids "$$(terraform -chdir=$(TF_DIR) output -json k3s_nodes | jq -r '.["master-1"].id')" --query 'StartingInstances[].CurrentState.Name' --output text
 
@@ -87,8 +100,9 @@ destroy: tf-init
 
 check:
 	pre-commit run --all-files --hook-stage push
-	pytest -q
+	pytest -q --cov=app --cov-fail-under=70
+	pip-audit -r requirements.txt --progress-spinner off
+	terraform fmt -check -recursive terraform
 	terraform -chdir=$(TF_DIR) init -backend=false -input=false
 	terraform -chdir=$(TF_DIR) validate
-	terraform fmt -check -recursive terraform
 	cd ansible && ansible-lint playbook.yml

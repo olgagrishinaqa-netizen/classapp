@@ -51,7 +51,8 @@ if [ ! -d "$SRC_DIR/.git" ]; then git clone --quiet "$REPO_URL" "$SRC_DIR"; fi
 git -C "$SRC_DIR" fetch --quiet origin "$BRANCH"
 git -C "$SRC_DIR" checkout --quiet -f "$SHA"
 
-if IMAGE_REPO="$IMAGE_REPO" SRC_DIR="$SRC_DIR" bash "$SRC_DIR/scripts/pull-deploy/deploy-steps.sh" "$SHA"; then
+export IMAGE_REPO SRC_DIR
+if bash "$SRC_DIR/scripts/pull-deploy/deploy-steps.sh" "$SHA"; then
   echo "$SHA" > "$STATE_DIR/deployed_sha"
   rm -f "$FAILED_FILE"
   log "Готово: ${SHA}"

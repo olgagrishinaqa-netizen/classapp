@@ -1,0 +1,42 @@
+# Осознанно принятые исключения сканера Trivy (IaC и манифесты Kubernetes).
+# Каждое исключение обосновано: либо это требование дизайна, либо это ограничение стороннего
+# образа. Всё остальное с уровнем HIGH/CRITICAL блокирует CI.
+misconfigurations:
+  # ---- Terraform (AWS) ----
+  - id: AWS-0104
+    paths: ["terraform/aws/main.tf"]
+    statement: >-
+      Исходящий трафик открыт: ВМ скачивает пакеты (apt), образы (ghcr.io, docker.io, registry.opensource.zalan.do),
+      K3s и обращается к API AWS. Список адресов назначения динамический.
+  - id: AWS-0107
+    paths: ["terraform/aws/main.tf"]
+    statement: >-
+      Порты 80/443 открыты всему интернету по дизайну (единственная публичная точка входа, nginx).
+      Порт 22 нужен раннерам GitHub Actions (динамические адреса) для деплоя; вход только по ключу.
+      План улучшения: деплой через AWS SSM без открытого SSH.
+  - id: AWS-0132
+    paths: ["terraform/aws/main.tf"]
+    statement: >-
+      Бэкапы шифруются SSE-S3 (AES-256, ключи AWS). Собственный KMS-ключ платный и для этой нагрузки избыточен.
+
+  # ---- Kubernetes ----
+  - id: KSV-0024
+    paths: ["k8s/classapp-nginx.yaml"]
+    statement: >-
+      hostPort 80 — единственная публичная точка входа на единственной ноде (требование: вход по одному порту).
+      Под работает без root и без capabilities; порт на хосте занимает CNI, а не контейнер.
+  - id: KSV-0014
+    paths: ["k8s/etcd.yaml", "k8s/patroni.yaml"]
+    statement: >-
+      Образы bitnami/etcd и Zalando Spilo при старте пишут конфигурацию и каталоги в корневую файловую систему.
+      Для них включены non-root (etcd), запрет повышения привилегий и сброс capabilities там, где это возможно.
+  - id: KSV-0118
+    paths: ["k8s/patroni.yaml"]
+    statement: >-
+      Spilo стартует от root (инициализация каталога данных, затем переход на пользователя postgres средствами образа).
+      Заставить его работать целиком от непривилегированного пользователя нельзя без смены образа.
+  - id: KSV-0056
+    paths: ["k8s/patroni.yaml"]
+    statement: >-
+      Роль ограничена пространством имён default и ресурсами pods/endpoints/services, которые нужны Patroni и sidecar
+      role-labeler для определения лидера и выставления метки patroni-role.

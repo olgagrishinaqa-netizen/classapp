@@ -10,13 +10,15 @@ CI/CD, Kubernetes, отказоустойчивая БД, мониторинг �
 |---|---|
 | `app/`, `config.py`, `alembic/` | приложение (Flask, SQLAlchemy) и миграции БД |
 | `tests/` | автотесты (pytest) и нагрузочный сценарий Locust (`tests/load/`) |
-| `Dockerfile`, `entrypoint.sh`, `gunicorn.conf.py` | образ приложения |
+| `Dockerfile`, `.dockerignore`, `entrypoint.sh`, `gunicorn.conf.py` | образ приложения |
+| `requirements*.txt` | зависимости: `requirements.txt` — только продакшен (в образе), `-test` — для CI, `-dev` — для разработчика |
 | `terraform/aws/` | IaC: ВМ, Elastic IP, security group, S3-бакет бэкапов, IAM-роль |
 | `terraform/` (корень) | устаревший вариант для Yandex Cloud (legacy) |
 | `ansible/` | роли: `common`, `k3s`, `bootstrap_secrets`, `monitoring`, `backup` |
 | `k8s/` | манифесты K3s: etcd, Patroni (PostgreSQL HA), миграции, web, nginx, HPA |
 | `scripts/pull-deploy/` | шаги деплоя (`deploy-steps.sh`); запасной pull-деплой на ВМ |
-| `.github/workflows/` | CI/CD: `ci.yml`, `build.yml`, `deploy.yml` |
+| `.github/` | CI/CD: `workflows/ci.yml`, `workflows/deploy.yml`, `dependabot.yml` (автообновления) |
+| `.trivyignore.yaml` | обоснованные исключения сканера безопасности Trivy |
 | `monitoring/`, `provisioning/`, `docker-compose.*.yml` | локальные стеки Prometheus/Grafana/Loki |
 | `docs/guide/` | **учебное руководство по каждой папке и файлу** (читать с [docs/guide/README.md](docs/guide/README.md)) |
 | `docs/` | шпаргалка к защите, разбор проблем Patroni/etcd |
@@ -52,14 +54,21 @@ Prometheus наружу не публикуется: `ssh -L 9090:127.0.0.1:3090
 
 ## Сборка и CI/CD
 
+Образ собирается **один раз**: именно тот образ, который прошёл проверки и дымовой тест, публикуется и затем выкатывается.
+
 | Событие | Что происходит |
 |---|---|
-| коммит в **любую ветку** | `ci.yml`: линтер (pre-commit: black, isort, flake8, bandit) → автотесты (pytest) → пробная сборка образа. Затем `build.yml` собирает образ и загружает его в GHCR с тегом `<ветка>-<sha>`; отчёты тестов (`junit`, `coverage`) сохраняются как артефакт GitHub Actions |
-| коммит в **`main`** | дополнительно `deploy.yml` выкатывает образ на ВМ: миграции Alembic → rollout → проверка `/healthz`, при сбое откат |
-| результат сборки и деплоя | уведомление в Telegram (секреты `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`; без них в логе предупреждение) |
+| коммит в **любую ветку** | `ci.yml`: **lint** (black, isort, flake8, bandit, shellcheck, hadolint, actionlint) · **secrets-scan** (gitleaks) · **dependency-audit** (pip-audit) · **iac** (terraform fmt/validate, ansible-lint, kubeconform, Trivy) · **test** (pytest на SQLite и PostgreSQL, покрытие ≥ 70%) · **migrations** (Alembic на PostgreSQL: накат, проверка расхождения моделей, откат и повторный накат) → **build** (сборка, сканирование образа Trivy, дымовой тест с ограничениями как в Kubernetes, публикация в GHCR с тегом `<ветка>-<sha>`); отчёты тестов сохраняются как артефакты |
+| коммит в **`main`** | после успешного CI `deploy.yml` выкатывает тот же образ на ВМ: миграции Alembic → rollout → проверка `/healthz` изнутри и снаружи, при сбое откат |
+| результат | уведомление в Telegram о CI и о деплое (секреты `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) |
 
-Секреты GitHub для деплоя: `SSH_HOST` (Elastic IP, `terraform output master1_static_ip`),
-`SSH_KEY` (приватный ключ), опционально `SSH_PORT`.
+Меры безопасности пайплайна: действия GitHub закреплены по SHA коммита, минимальные права токена, имена веток не подставляются
+в shell напрямую (защита от инъекции), деплой проверяет отпечаток сервера, версии зависимостей зафиксированы, Dependabot
+предлагает обновления. Принятые риски перечислены с обоснованием в `.trivyignore.yaml`.
+
+Секреты GitHub для деплоя: `SSH_HOST`, `SSH_KNOWN_HOSTS` (оба записывает `make github-secrets`), `SSH_KEY` (приватный ключ,
+один раз вручную), опционально `SSH_PORT`. Деплой вручную (например, если коммит пришёл при выключенной ВМ):
+Actions → *Deploy to Production* → *Run workflow* и полный SHA коммита.
 
 ## База данных и бэкапы
 
@@ -89,7 +98,7 @@ sudo classapp-restore apply <файл.sql.gz>  # из конкретного д�
 
 ## Единственный путь деплоя
 
-Автоматический деплой — только `deploy.yml` (push по SSH после успешной сборки на `main`).
+Автоматический деплой — только `deploy.yml` (push по SSH после успешного CI на `main`).
 Pull-таймер `scripts/pull-deploy/` — запасной вариант (если SSH с GitHub недоступен): `install.sh`
 по умолчанию его только устанавливает, но не включает (`sudo bash install.sh --enable`).
 

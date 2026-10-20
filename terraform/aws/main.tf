@@ -96,6 +96,17 @@ resource "aws_s3_bucket" "backups" {
   bucket = "${var.name_prefix}-backups-${data.aws_caller_identity.current.account_id}"
 }
 
+# Шифрование «на покое» (SSE-S3, ключи управляет AWS): явно, а не по умолчанию.
+resource "aws_s3_bucket_server_side_encryption_configuration" "backups" {
+  bucket = aws_s3_bucket.backups.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
 resource "aws_s3_bucket_public_access_block" "backups" {
   bucket                  = aws_s3_bucket.backups.id
   block_public_acls       = true
@@ -169,9 +180,12 @@ resource "aws_instance" "k3s" {
   vpc_security_group_ids = [aws_security_group.k3s.id]
   iam_instance_profile   = aws_iam_instance_profile.node.name
 
+  # Шифрование корневого диска (ключ aws/ebs). Смена этого флага на существующей ВМ
+  # пересоздаёт её (данные восстанавливаются из бэкапа: classapp-restore), см. `make infra`.
   root_block_device {
     volume_size = var.boot_disk_size_gb
     volume_type = "gp3"
+    encrypted   = true
   }
 
   # IMDSv2 обязателен; hop limit 2 — чтобы метаданные были доступны из pod'ов.

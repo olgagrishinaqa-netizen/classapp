@@ -17,6 +17,12 @@ spec:
         app.kubernetes.io/part-of: classapp
     spec:
       restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       tolerations:
       - key: node-role.kubernetes.io/control-plane
         operator: Exists
@@ -28,6 +34,13 @@ spec:
         - name: db-ready-check
           image: postgres:15-alpine
           imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsUser: 70 # пользователь postgres в образе alpine
+            runAsGroup: 70
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           command:
             - /bin/sh
             - -c
@@ -55,6 +68,11 @@ spec:
           # Базовый тег заменяется в CI через `kubectl set image` на образ текущего коммита.
           image: ghcr.io/olgagrishinaqa-netizen/classapp:latest
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           command:
             - alembic
             - upgrade

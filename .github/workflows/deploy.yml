@@ -1,40 +1,74 @@
-name: Deploy to Production VM1
+name: Deploy to Production
 
-# Единственный путь автоматического деплоя в main (pull-таймер на ВМ по умолчанию выключен).
-# SSH_HOST — публичный IP master-1 (terraform output master1_static_ip).
-# Необязательный секрет SSH_PORT — альтернативный порт sshd (по умолчанию 22).
-# Логика самого деплоя — scripts/pull-deploy/deploy-steps.sh (общая с запасным pull-вариантом).
+# Единственный путь автоматического деплоя. Запускается после успешного CI на main
+# и берёт именно тот образ main-<sha>, который CI собрал, проверил и опубликовал.
+# Вручную (если коммит пришёл, когда ВМ была выключена по расписанию): Actions -> Run workflow.
+#
+# Секреты: SSH_HOST (IP ВМ), SSH_KEY (приватный ключ), SSH_KNOWN_HOSTS (отпечаток ВМ, см. make github-secrets),
+# необязательные SSH_PORT, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID.
 
 on:
   workflow_run:
-    workflows: ["Build and Push to GHCR"]
+    workflows: ["CI"]
     types: [completed]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Полный SHA коммита, образ main-<sha> которого уже есть в GHCR"
+        required: true
+
+permissions:
+  contents: read
+
+# Два деплоя одновременно недопустимы; начатый деплой не прерываем.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
 
 jobs:
   deploy:
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
-    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
+    environment: production
     env:
       SSH_HOST: ${{ secrets.SSH_HOST }}
       SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
-      COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
+      COMMIT_SHA: ${{ github.event.workflow_run.head_sha || inputs.sha }}
+      OWNER: ${{ github.repository_owner }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Validate inputs
+        run: |
+          if ! printf '%s' "$COMMIT_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::COMMIT_SHA должен быть полным SHA коммита (40 hex-символов)"; exit 1
+          fi
+          if [ -z "$SSH_HOST" ]; then echo "::error::секрет SSH_HOST пуст"; exit 1; fi
 
-      - name: Prepare SSH config
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.COMMIT_SHA }}
+
+      - name: Prepare SSH
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
-          if [ -z "$SSH_HOST" ]; then echo "❌ SSH_HOST secret is empty"; exit 1; fi
-          install -m 700 -d "$HOME/.ssh"
-          cat > "$HOME/.ssh/classapp_deploy_key" <<'EOF'
-          ${{ secrets.SSH_KEY }}
-          EOF
-          chmod 600 "$HOME/.ssh/classapp_deploy_key"
-          cat > "$HOME/.ssh/config" <<EOF
+          umask 077
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$SSH_KEY" > "$HOME/.ssh/classapp_deploy_key"
+          if [ -n "${SSH_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          else
+            echo "::warning::SSH_KNOWN_HOSTS не задан: отпечаток ВМ берётся при первом подключении (риск MITM). Выполните 'make github-secrets'."
+            ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" > "$HOME/.ssh/known_hosts" 2>/dev/null || true
+          fi
+          cat > "$HOME/.ssh/config" <<SSHCONF
           Host prod
             HostName $SSH_HOST
             Port $SSH_PORT
@@ -42,79 +76,76 @@ jobs:
             IdentityFile $HOME/.ssh/classapp_deploy_key
             IdentitiesOnly yes
             BatchMode yes
-            StrictHostKeyChecking no
-            UserKnownHostsFile /dev/null
-            IPQoS none
+            StrictHostKeyChecking yes
+            UserKnownHostsFile $HOME/.ssh/known_hosts
             ConnectTimeout 20
-            ConnectionAttempts 1
             ServerAliveInterval 10
             ServerAliveCountMax 6
-            TCPKeepAlive yes
             ControlMaster auto
             ControlPath $HOME/.ssh/cm-%C
             ControlPersist 15m
-          EOF
+          SSHCONF
           chmod 600 "$HOME/.ssh/config"
 
       - name: Wait for SSH to become responsive
         run: |
           set -uo pipefail
           for attempt in $(seq 1 8); do
-            if ssh -v prod true >/tmp/ssh_attempt.log 2>&1; then
-              echo "✅ SSH is responsive (attempt $attempt)."
+            if ssh prod true >/tmp/ssh_attempt.log 2>&1; then
+              echo "SSH доступен (попытка $attempt)"
               exit 0
             fi
-            echo "⏳ Attempt $attempt/8 failed. Last ssh output:"
-            grep -vE "^debug1: (Reading|Applying|identity|Local|Authenticating|/etc)" /tmp/ssh_attempt.log | tail -5 | sed 's/^/    /'
+            echo "Попытка $attempt/8 не удалась:"; tail -3 /tmp/ssh_attempt.log | sed 's/^/    /'
             sleep 15
           done
-          echo "❌ SSH did not become responsive."
+          echo "::error::SSH недоступен. Если ВМ выключена по расписанию — запустите её (make start) и перезапустите workflow."
           exit 1
 
       - name: Upload manifests and deploy scripts
         run: |
           set -euo pipefail
-          retry() {
-            local n
-            for n in 1 2 3 4 5; do
-              "$@" && return 0
-              echo "⚠️ Attempt $n failed, retrying in 15s..."
-              sleep 15
-            done
-            return 1
-          }
-          retry bash -c '
-            tar czf - k8s scripts/pull-deploy \
-              | ssh prod "sudo mkdir -p /opt/classapp/repo /var/log/classapp /var/log/nginx && sudo chown -R ubuntu:ubuntu /opt/classapp && tar xzf - -C /opt/classapp/repo"
-          '
+          for n in 1 2 3 4 5; do
+            if tar czf - k8s scripts/pull-deploy \
+              | ssh prod "sudo mkdir -p /opt/classapp/repo /var/log/classapp /var/log/nginx && sudo chown -R ubuntu:ubuntu /opt/classapp && tar xzf - -C /opt/classapp/repo"; then
+              exit 0
+            fi
+            echo "Попытка $n не удалась, повтор через 15 с"; sleep 15
+          done
+          exit 1
 
       - name: Deploy to K3s
         run: |
           set -euo pipefail
-          OWNER_LOWER="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
-          retry() {
-            local n
-            for n in 1 2 3; do
-              "$@" && return 0
-              echo "⚠️ Attempt $n failed, retrying in 20s..."
-              sleep 20
-            done
-            return 1
-          }
-          retry ssh prod "sudo IMAGE_REPO='${OWNER_LOWER}/classapp' SRC_DIR=/opt/classapp/repo bash /opt/classapp/repo/scripts/pull-deploy/deploy-steps.sh '${COMMIT_SHA}'"
+          image_repo="${OWNER,,}/classapp"
+          for n in 1 2 3; do
+            # shellcheck disable=SC2029  # значения подставляются на клиенте намеренно (SHA провалидирован)
+            if ssh prod "sudo IMAGE_REPO='${image_repo}' SRC_DIR=/opt/classapp/repo bash /opt/classapp/repo/scripts/pull-deploy/deploy-steps.sh '${COMMIT_SHA}'"; then
+              exit 0
+            fi
+            echo "Попытка $n не удалась, повтор через 20 с"; sleep 20
+          done
+          exit 1
+
+      - name: Verify from outside (public entry point)
+        run: |
+          curl -fsS --max-time 15 --retry 10 --retry-delay 6 --retry-connrefused "http://${SSH_HOST}/healthz"
 
       - name: Notify deploy result
         if: always()
         env:
           TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          JOB_STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ -z "${TG_TOKEN:-}" ] || [ -z "${TG_CHAT:-}" ]; then
             echo "::warning::TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID не заданы — уведомление пропущено"
             exit 0
           fi
-          if [ "${{ job.status }}" = "success" ]; then STATUS="✅ SUCCESS"; else STATUS="❌ FAILED"; fi
-          curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+          if [ "$JOB_STATUS" = "success" ]; then STATUS="✅ SUCCESS"; else STATUS="❌ FAILED"; fi
+          curl -fsS --max-time 15 -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${TG_CHAT}" \
             --data-urlencode "text=Deploy ${STATUS} — classapp
-          Commit: ${COMMIT_SHA}" || true
+          Commit: ${COMMIT_SHA}
+          Run: ${RUN_URL}" \
+            || echo "::warning::Не удалось отправить уведомление в Telegram"

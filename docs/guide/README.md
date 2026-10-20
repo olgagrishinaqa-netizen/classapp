@@ -30,7 +30,7 @@ classapp/
 ├── tests/               автотесты pytest и нагрузочный тест Locust        -> 02
 ├── config.py            конфигурация (dev/prod)                           -> 01
 ├── Dockerfile, entrypoint.sh, gunicorn.conf.py   образ и запуск           -> 03
-├── .github/workflows/   CI/CD: ci.yml, build.yml, deploy.yml              -> 03
+├── .github/             CI/CD: workflows/ci.yml, workflows/deploy.yml, dependabot.yml -> 03
 ├── .pre-commit-config.yaml, .flake8, pyproject.toml   линтеры             -> 03
 ├── Makefile             «одна команда»: make up                           -> 03
 ├── scripts/pull-deploy/ шаги деплоя на ВМ (+ запасной pull-таймер)        -> 03
@@ -47,8 +47,8 @@ classapp/
 
 ```
 git push (любая ветка)
-  -> ci.yml:    линтер -> pytest -> пробная сборка образа -> уведомление в Telegram
-  -> build.yml: сборка образа и загрузка в GHCR (тег <ветка>-<sha>)
+  -> ci.yml:    проверки кода и IaC -> тесты (SQLite+PostgreSQL) -> миграции -> сборка образа ОДИН раз ->
+                сканирование -> дымовой тест -> публикация в GHCR (тег <ветка>-<sha>) -> уведомление
   -> (только main) deploy.yml: по SSH на ВМ -> deploy-steps.sh:
         миграции Alembic -> kubectl apply -> rollout -> проверка /healthz
   -> пользователь:  браузер -> порт 80 -> nginx -> web (2 реплики) -> Patroni/PostgreSQL

@@ -46,10 +46,20 @@ def downgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
     payment_columns = {column["name"] for column in inspector.get_columns("payment")}
+    # Имена берём из самой БД: на базе, созданной через create_all() (baseline-миграция),
+    # внешний ключ называется иначе, чем в upgrade(), и откат по «зашитому» имени падал.
+    fk_names = [
+        fk["name"]
+        for fk in inspector.get_foreign_keys("payment")
+        if fk.get("constrained_columns") == ["student_id"] and fk.get("name")
+    ]
+    index_names = {index["name"] for index in inspector.get_indexes("payment")}
 
     with op.batch_alter_table("payment") as batch_op:
         if "student_id" in payment_columns:
-            batch_op.drop_index(op.f("ix_payment_student_id"))
-            batch_op.drop_constraint("fk_payment_student_id_students", type_="foreignkey")
+            if "ix_payment_student_id" in index_names:
+                batch_op.drop_index(op.f("ix_payment_student_id"))
+            for fk_name in fk_names:
+                batch_op.drop_constraint(fk_name, type_="foreignkey")
             batch_op.drop_column("student_id")
         batch_op.alter_column("user_id", existing_type=sa.Integer(), nullable=False)

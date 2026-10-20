@@ -13,6 +13,12 @@ repos:
       - id: end-of-file-fixer
       - id: check-added-large-files
       - id: check-merge-conflict
+      - id: check-yaml
+        args: ["--allow-multiple-documents"]
+        # шаблоны/файлы с jinja и не-YAML вставками не проверяем
+        exclude: ^ansible/roles/monitoring/files/classapp-monitoring\.yaml$
+      - id: check-toml
+      - id: detect-private-key
 
   - repo: https://github.com/psf/black
     rev: 26.5.1
@@ -35,3 +41,22 @@ repos:
       - id: bandit
         args: ["-q", "-r", "app", "-x", ".venv,migrations,alembic,tests"]
         pass_filenames: false
+
+  # shell-скрипты (entrypoint, деплой, бэкап, Terraform-обвязка)
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+        args: ["-S", "warning"]
+
+  # Dockerfile
+  - repo: https://github.com/AleksaC/hadolint-py
+    rev: v2.15.1
+    hooks:
+      - id: hadolint
+
+  # workflow GitHub Actions (в том числе инъекции через ${{ }} в run:)
+  - repo: https://github.com/Mateusz-Grzelinski/actionlint-py
+    rev: v1.7.12.25
+    hooks:
+      - id: actionlint

@@ -13,6 +13,8 @@ web --> classapp-db-master (Service) --> Patroni (под, роль master) --> �
 Patroni <--> etcd-service (кто лидер)
 ```
 
+> **Про номера строк.** Таблицы ниже составлены до добавления блоков `securityContext` (см. раздел «Усиление безопасности подов»). В манифестах `classapp-web`, `classapp-nginx`, `migrate-job` и `etcd` реальные номера строк теперь на 5–25 больше; ориентируйтесь на описание блока, а не на номер.
+
 **Общие приёмы во всех манифестах:**
 - `apiVersion`/`kind` — тип объекта; `metadata.name`/`namespace`/`labels` — имя, пространство имён (`default`) и метки.
 - `app.kubernetes.io/name` — метка, по которой Service находит поды (`selector`).
@@ -113,7 +115,7 @@ Patroni <--> etcd-service (кто лидер)
 | 52–54 | `/grafana` -> перенаправление на `/grafana/` |
 | 56–68 | `location /grafana/` — проксирует в Grafana, передавая реальные адрес клиента и протокол |
 | 69–79 | **`location /`** — проксирует всё остальное на `classapp-web-service:8000`. Здесь «nginx распределяет запросы»: `/` в приложение, `/grafana/` в Grafana |
-| 83–111 | Deployment `classapp-nginx`: **1 реплика**, потому что порт 80 хоста может занять только один под |
+| 83–111 | Deployment `classapp-nginx`: **1 реплика** и стратегия `Recreate`, потому что порт 80 хоста может занять только один под (строки сдвинуты из-за блока `securityContext`) |
 | 113–115 | образ `nginx:1.25-alpine` |
 | 116–123 | порт `containerPort: 8080` и **`hostPort: 80`**: внешний порт 80 ВМ пробрасывается прямо в под. **Это и есть «один порт снаружи»** |
 | 124–130 | ресурсы: 50m CPU / 32 МБ, лимит 200m / 64 МБ |
@@ -127,6 +129,28 @@ HorizontalPodAutoscaler следит за средней загрузкой CPU 
 если загрузка выше 70% от `requests` (`averageUtilization: 70`). Метрики даёт `metrics-server`, встроенный в K3s.
 
 ---
+
+## Усиление безопасности подов (`securityContext`)
+
+Сканер Trivy в CI блокирует манифесты с уровнем HIGH, поэтому все поды, образами которых мы управляем, работают по принципу наименьших привилегий.
+
+| Что | Где задано | Смысл |
+|---|---|---|
+| `runAsNonRoot: true`, `runAsUser: 1000` (web, migrate), `101` (nginx), `1001` (etcd) | уровень пода | процесс не может быть root |
+| `seccompProfile: RuntimeDefault` | уровень пода | ядро блокирует опасные системные вызовы |
+| `allowPrivilegeEscalation: false` | каждый контейнер | нельзя получить больше прав, чем у процесса |
+| `capabilities.drop: [ALL]` | каждый контейнер | у контейнера нет специальных привилегий Linux |
+| `readOnlyRootFilesystem: true` | web, nginx, migrate | корневая ФС только для чтения; писать можно только в явно примонтированные тома (`/tmp`, логи, загрузки, кэш nginx) |
+| initContainer `fix-log-dir-perms` | web | **единственное исключение**: ему нужен root только чтобы отдать каталоги пользователю 1000; права урезаны до одной capability `CHOWN` |
+
+Тома `emptyDir` для `/tmp` (web, nginx) и `/var/cache/nginx` существуют из-за read-only корня. CI проверяет это дымовым тестом: образ запускается
+с `--read-only --cap-drop ALL --user 1000`, то есть с теми же ограничениями.
+
+**nginx и стратегия `Recreate`.** Порт 80 хоста занимается через `hostPort`; пока старый под жив, новый не может запуститься (порт занят),
+поэтому при обычном `RollingUpdate` раскатка зависла бы. Для nginx выбрано `Recreate` (сначала остановить, затем запустить; пауза в секунды).
+
+**Что не усилено и почему** (обосновано в `.trivyignore.yaml`): Patroni/Spilo стартует от root и пишет в корневую ФС; у etcd (bitnami) entrypoint пишет конфиг при
+старте; `hostPort` у nginx — единственная публичная точка входа.
 
 ## Секреты (не лежат в репозитории)
 `classapp-secrets` в `default` содержит `db-password`, `secret-key`, `admin-phone`, `admin-password`, `database-url`. Создаётся один раз

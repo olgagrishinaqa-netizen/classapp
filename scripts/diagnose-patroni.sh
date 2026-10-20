@@ -7,7 +7,6 @@
 set -e
 
 NAMESPACE=${1:-default}
-TIMEOUT=30
 
 echo "=== Patroni HA Cluster Diagnostic Report ==="
 echo "Namespace: $NAMESPACE"

@@ -20,6 +20,12 @@ spec:
         app.kubernetes.io/name: etcd
         app.kubernetes.io/part-of: classapp
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
       tolerations:
         - key: node-role.kubernetes.io/control-plane
           operator: Exists
@@ -31,6 +37,14 @@ spec:
         - name: etcd
           image: bitnamilegacy/etcd:3.5.11-debian-11-r0
           imagePullPolicy: IfNotPresent
+          # Образ bitnami работает под uid 1001. readOnlyRootFilesystem не включаем: его
+          # entrypoint при старте пишет конфиг в /opt/bitnami (см. .trivyignore.yaml).
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           env:
             - name: ALLOW_NONE_AUTHENTICATION
               value: "yes"

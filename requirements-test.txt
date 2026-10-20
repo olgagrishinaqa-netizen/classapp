@@ -1,0 +1,6 @@
+# Зависимости для автотестов в CI (приложение + pytest). Без инструментов разработки.
+-r requirements.txt
+pytest==9.1.1
+pytest-cov==7.1.0
+pytest-dotenv==0.5.2
+python-dotenv==1.2.3
