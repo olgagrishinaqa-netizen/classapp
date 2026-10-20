@@ -1,25 +1,37 @@
-# Автоматические pull request'ы с обновлениями: версии actions, зависимостей, образов, провайдеров.
+# Dependabot используется ТОЛЬКО для обновлений безопасности.
+#
+# Версии в проекте закреплены намеренно (стабильность и воспроизводимые сборки), поэтому плановых
+# обновлений версий нет: open-pull-requests-limit: 0 отключает их. Pull request появляется только когда
+# в закреплённой версии найдена уязвимость (Dependabot security updates, включены в настройках репозитория:
+# Settings -> Code security). Принимается он вручную после зелёного CI.
+#
+# Дополнительно уязвимости блокируют сам CI: pip-audit (зависимости) и Trivy (образ, Terraform, манифесты).
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
-    groups:
-      actions:
-        patterns: ["*"]
+    open-pull-requests-limit: 0
+    labels: ["dependencies", "security"]
+
   - package-ecosystem: pip
     directory: /
     schedule:
       interval: weekly
-    groups:
-      python:
-        patterns: ["*"]
+    open-pull-requests-limit: 0
+    labels: ["dependencies", "security"]
+
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
+    open-pull-requests-limit: 0
+    labels: ["dependencies", "security"]
+
   - package-ecosystem: terraform
     directory: /terraform/aws
     schedule:
       interval: weekly
+    open-pull-requests-limit: 0
+    labels: ["dependencies", "security"]

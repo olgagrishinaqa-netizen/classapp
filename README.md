@@ -17,7 +17,7 @@ CI/CD, Kubernetes, отказоустойчивая БД, мониторинг �
 | `ansible/` | роли: `common`, `k3s`, `bootstrap_secrets`, `monitoring`, `backup` |
 | `k8s/` | манифесты K3s: etcd, Patroni (PostgreSQL HA), миграции, web, nginx, HPA |
 | `scripts/pull-deploy/` | шаги деплоя (`deploy-steps.sh`); запасной pull-деплой на ВМ |
-| `.github/` | CI/CD: `workflows/ci.yml`, `workflows/deploy.yml`, `dependabot.yml` (автообновления) |
+| `.github/` | CI/CD: `workflows/ci.yml`, `workflows/deploy.yml`, `dependabot.yml` (только обновления безопасности) |
 | `.trivyignore.yaml` | обоснованные исключения сканера безопасности Trivy |
 | `monitoring/`, `provisioning/`, `docker-compose.*.yml` | локальные стеки Prometheus/Grafana/Loki |
 | `docs/guide/` | **учебное руководство по каждой папке и файлу** (читать с [docs/guide/README.md](docs/guide/README.md)) |
@@ -63,8 +63,8 @@ Prometheus наружу не публикуется: `ssh -L 9090:127.0.0.1:3090
 | результат | уведомление в Telegram о CI и о деплое (секреты `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) |
 
 Меры безопасности пайплайна: действия GitHub закреплены по SHA коммита, минимальные права токена, имена веток не подставляются
-в shell напрямую (защита от инъекции), деплой проверяет отпечаток сервера, версии зависимостей зафиксированы, Dependabot
-предлагает обновления. Принятые риски перечислены с обоснованием в `.trivyignore.yaml`.
+в shell напрямую (защита от инъекции), деплой проверяет отпечаток сервера, версии зависимостей зафиксированы намеренно (стабильность), а Dependabot
+присылает только срочные обновления безопасности при найденной уязвимости. Принятые риски перечислены с обоснованием в `.trivyignore.yaml`.
 
 Секреты GitHub для деплоя: `SSH_HOST`, `SSH_KNOWN_HOSTS` (оба записывает `make github-secrets`), `SSH_KEY` (приватный ключ,
 один раз вручную), опционально `SSH_PORT`. Деплой вручную (например, если коммит пришёл при выключенной ВМ):
