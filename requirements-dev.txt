@@ -1,6 +1,6 @@
 # Инструменты разработки и CI. В Docker-образ не попадают.
 -r requirements-test.txt
-pre-commit==4.6.2
+pre-commit==4.7.0
 pip-audit==2.10.1
 ansible-lint==26.10.1
 locust==2.46.7
