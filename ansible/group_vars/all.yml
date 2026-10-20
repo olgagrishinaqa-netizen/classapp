@@ -23,6 +23,11 @@ classapp_admin_phone: "375290000000"
 #         - "https://<your-mirror>"
 k3s_registries_config: {}
 
+# Мониторинг (kube-prometheus-stack) на ноде 2 ГБ вместе с Patroni и web не помещается:
+# нода уходит в swap, API-сервер K3s не отвечает. По умолчанию выключен; на демонстрацию:
+#   ansible-playbook ... -e monitoring_enabled=true   (или make configure MONITORING=true)
+monitoring_enabled: false
+
 # Размер swap-файла (ГБ): на ноде 2 ГБ RAM он страхует от OOM при пиках.
 swap_size_gb: 2
 

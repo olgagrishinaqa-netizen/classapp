@@ -1,5 +1,5 @@
-# Облегчённый профиль под ноду 2 vCPU (50%) / 4 ГБ RAM / HDD: на ней же живут
-# k3s, Patroni x2, etcd, web x3, nginx x2 — мониторинг не должен съедать всё.
+# Облегчённый профиль под ноду 2 vCPU / 2 ГБ RAM (t3.small): на ней же живут
+# k3s, Patroni, etcd, web x2, nginx. Включается только по monitoring_enabled=true.
 
 defaultRules:
   create: false # сотни стандартных PrometheusRule — лишняя нагрузка на HDD/CPU
@@ -33,10 +33,10 @@ grafana:
   resources:
     requests:
       cpu: 50m
-      memory: 128Mi
+      memory: 96Mi
     limits:
-      cpu: 500m
-      memory: 512Mi
+      cpu: 300m
+      memory: 256Mi
   # После перезагрузки preemptible-ВМ Grafana стартует долго (SQLite на HDD,
   # миграции под лимитом CPU). Дефолтные пробы (readiness timeout 1s, liveness
   # 60s+10x10s) убивали её в цикле — даём время на старт и медленные ответы.
@@ -69,10 +69,10 @@ prometheus:
     resources:
       requests:
         cpu: 100m
-        memory: 400Mi
+        memory: 200Mi
       limits:
         cpu: 400m
-        memory: 768Mi
+        memory: 384Mi
 
 prometheusOperator:
   resources:

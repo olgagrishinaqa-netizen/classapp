@@ -24,7 +24,13 @@ def test_admin_can_create_schedule_entry(client, db):
     _login_admin(client)
     response = client.post(
         "/schedule",
-        data={"day_of_week": "0", "lesson_number": "1", "subject": "Математика", "teacher": "Иванова И.И.", "room": "12"},
+        data={
+            "day_of_week": "0",
+            "lesson_number": "1",
+            "subject": "Математика",
+            "teacher": "Иванова И.И.",
+            "room": "12",
+        },
         follow_redirects=False,
     )
     assert response.status_code == 302
@@ -57,7 +63,13 @@ def test_admin_can_edit_and_delete_schedule_entry(client, db):
 
     edit_response = client.post(
         f"/schedule/{entry.id}/edit",
-        data={"day_of_week": "3", "lesson_number": "2", "subject": "Физика", "teacher": "", "room": ""},
+        data={
+            "day_of_week": "3",
+            "lesson_number": "2",
+            "subject": "Физика",
+            "teacher": "",
+            "room": "",
+        },
         follow_redirects=False,
     )
     assert edit_response.status_code == 302

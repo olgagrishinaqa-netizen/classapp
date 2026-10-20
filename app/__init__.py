@@ -1,15 +1,15 @@
 """Фабрика Flask-приложения classapp: конфигурация, логирование, bootstrap
 администратора и регистрация blueprint'ов/health-эндпоинта."""
 
-import os
 import logging
+import os
 import sys
 
 from flask import Flask, jsonify
 from pythonjsonlogger.json import JsonFormatter
 from sqlalchemy import inspect, text
-from werkzeug.utils import import_string
 from werkzeug.exceptions import HTTPException
+from werkzeug.utils import import_string
 
 from .extensions import db
 from .models import User

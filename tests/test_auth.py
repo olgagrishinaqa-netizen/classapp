@@ -43,7 +43,12 @@ def test_mobile_pages_render_and_use_server_forms(client, db):
     expenses_before = Expense.query.count()
     create_expense = client.post(
         "/expenses",
-        data={"action": "add_expense", "title": "Маркер", "amount": "125.50", "category": "Канцтовары"},
+        data={
+            "action": "add_expense",
+            "title": "Маркер",
+            "amount": "125.50",
+            "category": "Канцтовары",
+        },
         follow_redirects=False,
     )
     assert create_expense.status_code == 302
@@ -155,13 +160,18 @@ def test_dashboard_news_users_and_profile_role_mode(client, db):
     assert dashboard.status_code == 200
     assert b"\xd0\x90\xd0\xb4\xd0\xbc\xd0\xb8\xd0\xbd" in dashboard.data
     assert b"\xd0\xa1\xd0\xbe\xd0\xb1\xd1\x80\xd0\xb0\xd0\xbd\xd0\xb8\xd0\xb5" in news_page.data
-    assert b"\xd0\xa0\xd0\xbe\xd0\xb4\xd0\xb8\xd1\x82\xd0\xb5\xd0\xbb\xd1\x8c \xd0\xa2\xd0\xb5\xd1\x81\xd1\x82" in users_page.data
+    assert (
+        b"\xd0\xa0\xd0\xbe\xd0\xb4\xd0\xb8\xd1\x82\xd0\xb5\xd0\xbb\xd1\x8c \xd0\xa2\xd0\xb5\xd1\x81\xd1\x82"
+        in users_page.data
+    )
     assert b"/change_role" in profile.data
 
     change_role = client.post("/change_role", data={"role": "parent"}, follow_redirects=False)
     assert change_role.status_code == 302
     parent_dashboard = client.get("/dashboard")
-    assert b"\xd0\xa0\xd0\xbe\xd0\xb4\xd0\xb8\xd1\x82\xd0\xb5\xd0\xbb\xd1\x8c" in parent_dashboard.data
+    assert (
+        b"\xd0\xa0\xd0\xbe\xd0\xb4\xd0\xb8\xd1\x82\xd0\xb5\xd0\xbb\xd1\x8c" in parent_dashboard.data
+    )
     assert client.get("/users").headers["Location"].endswith("/dashboard")
 
 
@@ -290,7 +300,12 @@ def test_admin_can_create_parent_with_russian_role_name(client, db):
 
 
 def test_login_rejects_invalid_password_hash_without_server_error(client, db):
-    user = User(full_name="Поврежденный пользователь", phone="79991234568", role="parent", password_hash="legacy")
+    user = User(
+        full_name="Поврежденный пользователь",
+        phone="79991234568",
+        role="parent",
+        password_hash="legacy",
+    )
     db.session.add(user)
     db.session.commit()
 

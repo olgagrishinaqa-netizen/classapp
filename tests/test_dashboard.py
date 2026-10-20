@@ -1,4 +1,4 @@
-from app.models import NewsImage, Expense, News
+from app.models import Expense, News, NewsImage
 
 
 def _login_admin(client):
@@ -11,24 +11,29 @@ def test_dashboard_shows_latest_news_image(client, db):
         title="Дашборд: новость с картинкой",
         description="описание",
         status="published",
-        images=[NewsImage(name="photo.png", path="stored-photo.png"), NewsImage(name="b.png", path="stored-b.png")],
+        images=[
+            NewsImage(name="photo.png", path="stored-photo.png"),
+            NewsImage(name="b.png", path="stored-b.png"),
+        ],
     )
     db.session.add(news_item)
     db.session.commit()
 
     page = client.get("/dashboard")
     assert page.status_code == 200
-    assert b'/uploads/stored-photo.png' in page.data
-    assert b'/uploads/stored-b.png' in page.data
-    assert b'js-carousel-next' in page.data
-    assert b'object-contain' in page.data
+    assert b"/uploads/stored-photo.png" in page.data
+    assert b"/uploads/stored-b.png" in page.data
+    assert b"js-carousel-next" in page.data
+    assert b"object-contain" in page.data
 
 
 def test_dashboard_hides_image_block_when_news_has_none(client, db):
     _login_admin(client)
     NewsImage.query.delete()
     db.session.commit()
-    db.session.add(News(title="Дашборд: новость без картинки", description="описание", status="published"))
+    db.session.add(
+        News(title="Дашборд: новость без картинки", description="описание", status="published")
+    )
     db.session.commit()
 
     page = client.get("/dashboard")

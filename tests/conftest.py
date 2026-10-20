@@ -45,6 +45,7 @@ class TestProdConfigInitApp:
 
     def test_prod_init_app_raises_when_secret_key_missing(self, monkeypatch):
         from flask import Flask
+
         from config import ProdConfig
 
         monkeypatch.delenv("SECRET_KEY", raising=False)
@@ -56,6 +57,7 @@ class TestProdConfigInitApp:
 
     def test_prod_init_app_raises_when_database_url_missing(self, monkeypatch):
         from flask import Flask
+
         from config import ProdConfig
 
         monkeypatch.setenv("SECRET_KEY", "real-secret")
@@ -67,6 +69,7 @@ class TestProdConfigInitApp:
 
     def test_prod_init_app_passes_when_both_env_vars_set(self, monkeypatch):
         from flask import Flask
+
         from config import ProdConfig
 
         monkeypatch.setenv("SECRET_KEY", "real-secret")

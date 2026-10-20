@@ -37,7 +37,7 @@ spec:
         - name: classapp-web
           image: ghcr.io/olgagrishinaqa-netizen/classapp:latest
           imagePullPolicy: IfNotPresent
-          args: ["gunicorn", "-w", "2", "-b", "0.0.0.0:8000", "app:create_app()"]
+          args: ["gunicorn", "-w", "1", "-b", "0.0.0.0:8000", "app:create_app()"]
           env:
             - name: DATABASE_URL
               valueFrom:
@@ -83,10 +83,10 @@ spec:
           resources:
             requests:
               cpu: 100m
-              memory: 160Mi
+              memory: 128Mi
             limits:
               cpu: 500m
-              memory: 384Mi
+              memory: 256Mi
           volumeMounts:
             - name: classapp-logs
               mountPath: /var/log/classapp

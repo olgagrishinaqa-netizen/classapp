@@ -35,5 +35,6 @@
       ansible.builtin.setup:
   roles:
     - bootstrap_secrets
-    - monitoring
+    - role: monitoring
+      when: monitoring_enabled | bool
     - backup

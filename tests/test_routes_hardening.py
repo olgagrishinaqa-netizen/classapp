@@ -35,7 +35,9 @@ def test_page_prevents_demoting_last_admin(client, db):
     _login_admin_api(client)
     admin = User.query.filter_by(phone="79990000000").one()
 
-    response = client.post(f"/users/{admin.id}/role", data={"role": "parent"}, follow_redirects=False)
+    response = client.post(
+        f"/users/{admin.id}/role", data={"role": "parent"}, follow_redirects=False
+    )
 
     assert response.status_code == 302
     assert response.headers["Location"].endswith("/users")

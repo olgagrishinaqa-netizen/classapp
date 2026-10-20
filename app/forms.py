@@ -44,7 +44,8 @@ class RegisterForm(FlaskForm):
     username = StringField("Номер телефона", validators=[DataRequired(), Length(max=32)])
     password = PasswordField("Пароль", validators=[DataRequired(), Length(min=6, max=128)])
     password_confirm = PasswordField(
-        "Повторите пароль", validators=[DataRequired(), EqualTo("password", "Пароли должны совпадать")]
+        "Повторите пароль",
+        validators=[DataRequired(), EqualTo("password", "Пароли должны совпадать")],
     )
     submit = SubmitField("Создать аккаунт")
 
@@ -61,7 +62,9 @@ class ExpenseForm(FlaskForm):
     category = StringField("Категория", validators=[Length(max=80)])
     receipt = FileField(
         "Фото или файл чека",
-        validators=[FileAllowed(["jpg", "jpeg", "png", "webp", "pdf"], "Допустимы JPG, PNG, WEBP или PDF.")],
+        validators=[
+            FileAllowed(["jpg", "jpeg", "png", "webp", "pdf"], "Допустимы JPG, PNG, WEBP или PDF.")
+        ],
     )
     submit = SubmitField("Добавить расход")
 

@@ -1,5 +1,4 @@
 import io
-
 import os
 
 from app.models import News, NewsImage
@@ -18,7 +17,10 @@ def test_admin_can_create_news_with_image(client, db):
             "title": "С картинкой",
             "description": "Текст новости",
             "status": "published",
-            "images": [(io.BytesIO(b"fake-png-bytes"), "photo.png"), (io.BytesIO(b"fake-jpg"), "two.jpg")],
+            "images": [
+                (io.BytesIO(b"fake-png-bytes"), "photo.png"),
+                (io.BytesIO(b"fake-jpg"), "two.jpg"),
+            ],
         },
         content_type="multipart/form-data",
         follow_redirects=False,

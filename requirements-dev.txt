@@ -3,3 +3,4 @@ pytest-cov
 pytest-dotenv
 pre-commit
 locust
+ansible-lint

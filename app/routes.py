@@ -26,6 +26,7 @@ from werkzeug.utils import secure_filename
 from .audit import REGISTRATIONS, audit, audit_login, describe_device, mask_phone
 from .extensions import db
 from .forms import (
+    WEEKDAY_CHOICES,
     BellScheduleEntryForm,
     ExpenseForm,
     GeneralInfoForm,
@@ -39,7 +40,6 @@ from .forms import (
     TaskForm,
     UserManagementForm,
     UserRoleForm,
-    WEEKDAY_CHOICES,
 )
 from .models import (
     BellScheduleEntry,
@@ -63,7 +63,17 @@ STATUS_LABELS = {"created": "Создана", "in_progress": "В работе", 
 ROLE_LABELS = {"parent": "Родитель", "student": "Ученик", "admin": "Админ"}
 ALLOWED_RECEIPT_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "pdf"}
 ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
-ALLOWED_GENERAL_INFO_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "pdf", "doc", "docx", "xls", "xlsx"}
+ALLOWED_GENERAL_INFO_EXTENSIONS = {
+    "jpg",
+    "jpeg",
+    "png",
+    "webp",
+    "pdf",
+    "doc",
+    "docx",
+    "xls",
+    "xlsx",
+}
 MAX_NEWS_IMAGES = 10
 WEEKDAY_LABELS = dict(WEEKDAY_CHOICES)
 
@@ -146,7 +156,11 @@ def _attach_news_images(news_item, files):
             return error
         saved.append(stored_name)
         news_item.images.append(
-            NewsImage(name=secure_filename(file_storage.filename), path=stored_name, position=next_position)
+            NewsImage(
+                name=secure_filename(file_storage.filename),
+                path=stored_name,
+                position=next_position,
+            )
         )
         next_position += 1
     return None
@@ -444,7 +458,11 @@ def edit_news_page(news_id):
         flash("Новость не найдена.", "error")
         return redirect(url_for("main.news_page"))
     form = NewsForm(
-        data={"title": news_item.title, "description": news_item.description, "status": news_item.status}
+        data={
+            "title": news_item.title,
+            "description": news_item.description,
+            "status": news_item.status,
+        }
     )
     if form.validate_on_submit():
         removed_files = _remove_news_images(news_item, request.form.getlist("remove_images"))
@@ -666,7 +684,9 @@ def general_info_page():
             file_path = None
             uploaded = form.file.data
             if uploaded and uploaded.filename:
-                upload_folder = current_app.config.get("UPLOAD_FOLDER", os.path.join(os.getcwd(), "uploads"))
+                upload_folder = current_app.config.get(
+                    "UPLOAD_FOLDER", os.path.join(os.getcwd(), "uploads")
+                )
                 file_path, file_error = _save_uploaded_file(
                     uploaded,
                     allowed_extensions=ALLOWED_GENERAL_INFO_EXTENSIONS,
@@ -732,7 +752,9 @@ def edit_general_info_page(info_id):
     if form.validate_on_submit():
         uploaded = form.file.data
         if uploaded and uploaded.filename:
-            upload_folder = current_app.config.get("UPLOAD_FOLDER", os.path.join(os.getcwd(), "uploads"))
+            upload_folder = current_app.config.get(
+                "UPLOAD_FOLDER", os.path.join(os.getcwd(), "uploads")
+            )
             file_path, file_error = _save_uploaded_file(
                 uploaded,
                 allowed_extensions=ALLOWED_GENERAL_INFO_EXTENSIONS,
@@ -773,7 +795,11 @@ LOGIN_EVENT_LABELS = {
     "register": "Регистрация",
     "register_rejected": "Регистрация отклонена",
 }
-LOGIN_REASON_LABELS = {"bad_password": "неверный пароль", "unknown_user": "номер не найден", "phone_exists": "номер уже занят"}
+LOGIN_REASON_LABELS = {
+    "bad_password": "неверный пароль",  # nosec B105 - текст метки, не пароль
+    "unknown_user": "номер не найден",
+    "phone_exists": "номер уже занят",
+}
 
 
 @bp.get("/admin/login-log")
@@ -793,7 +819,11 @@ def login_log_page():
     pagination = query.paginate(page=max(page, 1), per_page=30, error_out=False)
 
     user_ids = {event.user_id for event in pagination.items if event.user_id}
-    names = {u.id: u.full_name for u in User.query.filter(User.id.in_(user_ids)).all()} if user_ids else {}
+    names = (
+        {u.id: u.full_name for u in User.query.filter(User.id.in_(user_ids)).all()}
+        if user_ids
+        else {}
+    )
 
     since = local_now() - timedelta(hours=24)
     recent = LoginEvent.query.filter(LoginEvent.created_at >= since)
@@ -812,7 +842,8 @@ def login_log_page():
             "time": event.created_at,
             "label": LOGIN_EVENT_LABELS.get(event.event, event.event),
             "kind": event.event,
-            "name": names.get(event.user_id) or ("удалённый пользователь" if event.user_id else None),
+            "name": names.get(event.user_id)
+            or ("удалённый пользователь" if event.user_id else None),
             "phone": event.phone,
             "ip": event.ip,
             "device": describe_device(event.user_agent),
@@ -857,7 +888,11 @@ def users_page():
             else:
                 full_name = " ".join(
                     part.strip()
-                    for part in (form.last_name.data, form.first_name.data, form.middle_name.data or "")
+                    for part in (
+                        form.last_name.data,
+                        form.first_name.data,
+                        form.middle_name.data or "",
+                    )
                     if part.strip()
                 )
                 new_user = User(full_name=full_name, phone=phone, role=form.role.data)
@@ -913,7 +948,11 @@ def edit_user_page(user_id):
         flash("Введите номер в формате +375 (XX) XXX-XX-XX.", "error")
     elif existing_user and existing_user.id != target_user.id:
         flash("Этот номер телефона уже зарегистрирован.", "error")
-    elif target_user.is_admin and form.role.data != "admin" and User.query.filter_by(role="admin").count() == 1:
+    elif (
+        target_user.is_admin
+        and form.role.data != "admin"
+        and User.query.filter_by(role="admin").count() == 1
+    ):
         flash("Нельзя изменить роль последнего администратора.", "error")
     else:
         target_user.full_name = " ".join(
@@ -969,7 +1008,11 @@ def update_user_role_page(user_id):
         flash("Пользователь не найден.", "error")
     elif form.validate_on_submit():
         next_role = form.role.data
-        if target_user.is_admin and next_role != "admin" and User.query.filter_by(role="admin").count() == 1:
+        if (
+            target_user.is_admin
+            and next_role != "admin"
+            and User.query.filter_by(role="admin").count() == 1
+        ):
             flash("Нельзя изменить роль последнего администратора.", "error")
         else:
             target_user.role = next_role
@@ -1036,9 +1079,7 @@ def admin_students_page():
                 or_(Student.last_name.ilike(pattern), Student.first_name.ilike(pattern))
             )
 
-    students = students_query.order_by(
-        Student.last_name.asc(), Student.first_name.asc()
-    ).all()
+    students = students_query.order_by(Student.last_name.asc(), Student.first_name.asc()).all()
 
     return render_template(
         "admin_students.html",
@@ -1193,7 +1234,9 @@ def tasks_page():
 
     active_tasks = Task.query.filter(Task.status != "done").order_by(Task.created_at.desc()).all()
     active_tasks = sorted(active_tasks, key=_task_sort_key)
-    completed_tasks = Task.query.filter(Task.status == "done").order_by(Task.created_at.desc()).all()
+    completed_tasks = (
+        Task.query.filter(Task.status == "done").order_by(Task.created_at.desc()).all()
+    )
     return render_template(
         "tasks.html",
         user=user,
@@ -1254,7 +1297,9 @@ def expenses_page():
                 receipt_filename = None
                 receipt = expense_form.receipt.data
                 if receipt:
-                    receipt_dir = os.path.join(current_app.root_path, "static", "uploads", "receipts")
+                    receipt_dir = os.path.join(
+                        current_app.root_path, "static", "uploads", "receipts"
+                    )
                     receipt_filename, receipt_error = _save_uploaded_file(
                         receipt,
                         allowed_extensions=ALLOWED_RECEIPT_EXTENSIONS,
@@ -1278,9 +1323,7 @@ def expenses_page():
         else:
             flash("Неизвестное действие.", "error")
 
-    total_deposited = db.session.query(
-        db.func.coalesce(db.func.sum(Payment.amount), 0)
-    ).scalar()
+    total_deposited = db.session.query(db.func.coalesce(db.func.sum(Payment.amount), 0)).scalar()
     total_spent = db.session.query(db.func.coalesce(db.func.sum(Expense.amount), 0)).scalar()
     current_balance = total_deposited - total_spent
     return render_template(
@@ -1338,7 +1381,9 @@ def edit_expense_page(expense_id):
             flash("Расход обновлен.", "success")
             return redirect(url_for("main.expenses_page"))
 
-    return render_template("expense_edit.html", user=user, current_user=user, form=form, expense=expense)
+    return render_template(
+        "expense_edit.html", user=user, current_user=user, form=form, expense=expense
+    )
 
 
 @bp.route("/payments/edit/<int:payment_id>", methods=["GET", "POST"])
@@ -1369,7 +1414,9 @@ def edit_payment_page(payment_id):
             flash("Взнос обновлен.", "success")
             return redirect(url_for("main.expenses_page"))
 
-    return render_template("payment_edit.html", user=user, current_user=user, form=form, payment=payment)
+    return render_template(
+        "payment_edit.html", user=user, current_user=user, form=form, payment=payment
+    )
 
 
 @bp.post("/api/login")
@@ -1419,7 +1466,9 @@ def switch_role():
 @bp.get("/api/users")
 @admin_required
 def users():
-    return jsonify(users=[user_json(user) for user in User.query.order_by(User.created_at.desc()).all()])
+    return jsonify(
+        users=[user_json(user) for user in User.query.order_by(User.created_at.desc()).all()]
+    )
 
 
 @bp.post("/api/users")
@@ -1431,7 +1480,12 @@ def create_user():
     if any(not value for value in cleaned.values()):
         return jsonify(error="Заполните все обязательные поля"), 400
 
-    role_aliases = {"parent": "parent", "родитель": "parent", "student": "student", "ученик": "student"}
+    role_aliases = {
+        "parent": "parent",
+        "родитель": "parent",
+        "student": "student",
+        "ученик": "student",
+    }
     role = role_aliases.get(cleaned["role"].lower(), cleaned["role"]) if cleaned["role"] else ""
     if role not in {"parent", "student"}:
         return jsonify(error="Роль должна быть Родитель или Ученик"), 400
@@ -1462,12 +1516,23 @@ def update_user(user_id):
     if "full_name" in data and str(data["full_name"]).strip():
         user.full_name = str(data["full_name"]).strip()
     if "role" in data and str(data["role"]).strip():
-        role_aliases = {"parent": "parent", "родитель": "parent", "student": "student", "ученик": "student", "admin": "admin", "админ": "admin"}
+        role_aliases = {
+            "parent": "parent",
+            "родитель": "parent",
+            "student": "student",
+            "ученик": "student",
+            "admin": "admin",
+            "админ": "admin",
+        }
         raw_role = str(data["role"]).strip().lower()
         next_role = role_aliases.get(raw_role, raw_role)
         if next_role not in {"parent", "student", "admin"}:
             return jsonify(error="Недопустимая роль"), 400
-        if user.is_admin and next_role != "admin" and User.query.filter_by(role="admin").count() == 1:
+        if (
+            user.is_admin
+            and next_role != "admin"
+            and User.query.filter_by(role="admin").count() == 1
+        ):
             return jsonify(error="Нельзя изменить роль последнего администратора"), 400
         if actor and actor.id == user.id and actor.is_admin and next_role != "admin":
             return jsonify(error="Нельзя понизить собственную роль администратора через API"), 400
@@ -1510,7 +1575,9 @@ def create_news():
         return jsonify(error="Некорректный статус новости"), 400
 
     news_item = News(title=title, description=description, status=status)
-    image_error = _attach_news_images(news_item, request.files.getlist("image") + request.files.getlist("images"))
+    image_error = _attach_news_images(
+        news_item, request.files.getlist("image") + request.files.getlist("images")
+    )
     if image_error:
         return jsonify(error=image_error), 400
     db.session.add(news_item)
@@ -1533,8 +1600,12 @@ def update_news(news_id):
     if "status" in data and str(data.get("status") or "").strip() in {"draft", "published"}:
         news_item.status = str(data["status"]).strip()
 
-    removed_files = _remove_news_images(news_item, data.getlist("remove_images") if hasattr(data, "getlist") else [])
-    image_error = _attach_news_images(news_item, request.files.getlist("image") + request.files.getlist("images"))
+    removed_files = _remove_news_images(
+        news_item, data.getlist("remove_images") if hasattr(data, "getlist") else []
+    )
+    image_error = _attach_news_images(
+        news_item, request.files.getlist("image") + request.files.getlist("images")
+    )
     if image_error:
         db.session.rollback()
         return jsonify(error=image_error), 400
@@ -1547,7 +1618,9 @@ def update_news(news_id):
 @bp.get("/api/tasks")
 @auth_required
 def tasks():
-    return jsonify(tasks=[task_json(task) for task in Task.query.order_by(Task.created_at.desc()).all()])
+    return jsonify(
+        tasks=[task_json(task) for task in Task.query.order_by(Task.created_at.desc()).all()]
+    )
 
 
 @bp.post("/api/tasks")
@@ -1590,7 +1663,16 @@ def update_task(task_id):
 def reports():
     reports_data = []
     for report in ExpenseReport.query.order_by(ExpenseReport.created_at.desc()).all():
-        reports_data.append({"id": report.id, "income": float(report.income), "items": report.expense_items or [], "total_expenses": report.total_expenses, "balance": report.balance, "receipt_name": report.receipt_name})
+        reports_data.append(
+            {
+                "id": report.id,
+                "income": float(report.income),
+                "items": report.expense_items or [],
+                "total_expenses": report.total_expenses,
+                "balance": report.balance,
+                "receipt_name": report.receipt_name,
+            }
+        )
     return jsonify(reports=reports_data)
 
 
@@ -1617,7 +1699,9 @@ def create_report():
     receipt_name = None
     receipt_path = None
     if receipt and receipt.filename:
-        upload_folder = current_app.config.get("UPLOAD_FOLDER", os.path.join(os.getcwd(), "uploads"))
+        upload_folder = current_app.config.get(
+            "UPLOAD_FOLDER", os.path.join(os.getcwd(), "uploads")
+        )
         receipt_path, receipt_error = _save_uploaded_file(
             receipt,
             allowed_extensions=ALLOWED_RECEIPT_EXTENSIONS,
@@ -1627,10 +1711,25 @@ def create_report():
         if receipt_error:
             return jsonify(error=receipt_error), 400
         receipt_name = secure_filename(receipt.filename)
-    report = ExpenseReport(income=income, expense_items=normalized, receipt_name=receipt_name, receipt_path=receipt_path)
+    report = ExpenseReport(
+        income=income,
+        expense_items=normalized,
+        receipt_name=receipt_name,
+        receipt_path=receipt_path,
+    )
     db.session.add(report)
     db.session.commit()
-    return jsonify(report={"income": income, "items": normalized, "total_expenses": report.total_expenses, "balance": report.balance}), 201
+    return (
+        jsonify(
+            report={
+                "income": income,
+                "items": normalized,
+                "total_expenses": report.total_expenses,
+                "balance": report.balance,
+            }
+        ),
+        201,
+    )
 
 
 @bp.get("/uploads/<path:filename>")

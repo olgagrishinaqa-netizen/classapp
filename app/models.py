@@ -167,7 +167,9 @@ class NewsImage(db.Model):
     __tablename__ = "news_image"
 
     id = db.Column(db.Integer, primary_key=True)
-    news_id = db.Column(db.Integer, db.ForeignKey("news.id", ondelete="CASCADE"), nullable=False, index=True)
+    news_id = db.Column(
+        db.Integer, db.ForeignKey("news.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     name = db.Column(db.String(255))
     path = db.Column(db.String(255), nullable=False)
     position = db.Column(db.Integer, nullable=False, default=0)
@@ -259,9 +261,7 @@ class Student(db.Model):
 
     __tablename__ = "students"
     __table_args__ = (
-        db.UniqueConstraint(
-            "last_name", "first_name", name="uq_students_last_name_first_name"
-        ),
+        db.UniqueConstraint("last_name", "first_name", name="uq_students_last_name_first_name"),
     )
 
     id = db.Column(db.Integer, primary_key=True)

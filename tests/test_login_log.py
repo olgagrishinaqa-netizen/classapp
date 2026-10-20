@@ -68,6 +68,9 @@ def test_login_log_requires_login_and_admin_role(client, db):
 
 
 def test_describe_device():
-    ua = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Mobile Safari/537.36"
+    ua = (
+        "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/147.0.0.0 Mobile Safari/537.36"
+    )
     assert describe_device(ua) == "Android · Chrome"
     assert describe_device("") == "Неизвестное устройство"

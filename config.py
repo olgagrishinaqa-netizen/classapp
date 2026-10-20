@@ -13,7 +13,9 @@ class BaseConfig:
     ADMIN_NAME = os.getenv("ADMIN_NAME", "Администратор")
     ADMIN_PHONE = os.getenv("ADMIN_PHONE", "79990000000")
     ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
-    ADMIN_RESET_PASSWORD_ON_BOOT = str(os.getenv("ADMIN_RESET_PASSWORD_ON_BOOT", "False")).lower() in (
+    ADMIN_RESET_PASSWORD_ON_BOOT = str(
+        os.getenv("ADMIN_RESET_PASSWORD_ON_BOOT", "False")
+    ).lower() in (
         "1",
         "true",
         "yes",
@@ -41,7 +43,11 @@ class ProdConfig(BaseConfig):
     DEBUG = False
     # By default do not force secure-only cookies unless explicitly configured.
     # In many deployments TLS is terminated by a reverse proxy; enable by env var when TLS is present.
-    SESSION_COOKIE_SECURE = str(os.getenv("SESSION_COOKIE_SECURE", "False")).lower() in ("1", "true", "yes")
+    SESSION_COOKIE_SECURE = str(os.getenv("SESSION_COOKIE_SECURE", "False")).lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
     @staticmethod
     def init_app(app):

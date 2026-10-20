@@ -11,7 +11,11 @@ def test_admin_can_create_task_with_all_fields(client, db):
     _login_admin(client)
     response = client.post(
         "/tasks",
-        data={"title": "Собрать деньги на подарки", "description": "До праздника", "deadline": "2026-12-20"},
+        data={
+            "title": "Собрать деньги на подарки",
+            "description": "До праздника",
+            "deadline": "2026-12-20",
+        },
         follow_redirects=False,
     )
     assert response.status_code == 302

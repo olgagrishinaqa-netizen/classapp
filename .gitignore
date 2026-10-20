@@ -38,3 +38,6 @@ htmlcov/
 # Сохранённые планы Terraform
 tfplan
 *.tfplan
+
+# Лог первого прогона Ansible содержит сгенерированные пароли
+ansible/last-run.log
