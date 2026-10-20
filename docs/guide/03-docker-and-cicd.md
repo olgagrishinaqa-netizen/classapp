@@ -139,7 +139,7 @@ migrations ───┘
 ### `deploy.yml` — по шагам
 | Блок | Что делает |
 |---|---|
-| `on: workflow_run` ("CI") и `workflow_dispatch` (вход `sha`) | запуск после CI либо вручную с указанием коммита |
+| `on: workflow_run` ("CI", `branches: [main]`) и `workflow_dispatch` (вход `sha`) | запуск после CI **только для ветки `main`** (для остальных веток деплой не стартует вовсе, нет «пропущенных» запусков) либо вручную с указанием коммита |
 | `permissions` | `contents`, `packages`, `attestations` — только чтение |
 | `concurrency: deploy-production`, `cancel-in-progress: false` | два деплоя одновременно невозможны, начатый не прерывается (в очереди остаётся только самый свежий) |
 | `if:` | автоматически только для успешного CI, ветки `main`, события `push`; вручную всегда |

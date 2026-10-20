@@ -11,6 +11,9 @@ on:
   workflow_run:
     workflows: ["CI"]
     types: [completed]
+    # Только ветка main: для остальных веток деплой даже не запускается (нет «пропущенных» запусков).
+    # Условие if: в job ниже остаётся второй линией защиты.
+    branches: [main]
   workflow_dispatch:
     inputs:
       sha:
