@@ -21,7 +21,7 @@ crash.log
 # Генерируется автоматически из terraform output (terraform/generate_inventory.sh)
 # и содержит реальные публичные IP — не коммитим.
 ansible/inventory/hosts.ini
-ansible/group_vars/vault.yml
+ansible/group_vars/secrets.yml
 reports/
 .pytest_cache/
 htmlcov/

@@ -45,6 +45,13 @@ spec:
             capabilities:
               drop: ["ALL"]
               add: ["CHOWN"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 8Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
           volumeMounts:
             - name: classapp-logs
               mountPath: /var/log/classapp

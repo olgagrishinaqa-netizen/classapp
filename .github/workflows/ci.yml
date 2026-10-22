@@ -132,7 +132,7 @@ jobs:
           echo "95f14e87aa28c09d5941f11bd024c1d02fdc0303ccaa23f61cef67bc92619d73  /tmp/kubeconform.tgz" | sha256sum -c -
           tar xzf /tmp/kubeconform.tgz -C /tmp kubeconform
           /tmp/kubeconform -strict -summary -kubernetes-version 1.30.0 -ignore-missing-schemas \
-            k8s/etcd.yaml k8s/services.yaml k8s/patroni.yaml k8s/migrate-job.yaml \
+            k8s/etcd.yaml k8s/services.yaml k8s/networkpolicy.yaml k8s/patroni.yaml k8s/migrate-job.yaml \
             k8s/classapp-web.yaml k8s/classapp-nginx.yaml k8s/hpa.yaml
 
       - name: Security scan of IaC, Dockerfile and manifests (trivy)

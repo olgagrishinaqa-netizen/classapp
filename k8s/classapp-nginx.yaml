@@ -33,6 +33,7 @@ data:
         sendfile on;
         keepalive_timeout 65;
         client_max_body_size 20m;
+        server_tokens off; # не раскрывать версию nginx в заголовках и страницах ошибок
 
         # Единая точка входа: приложение на «/», Grafana на «/grafana/».
         # CoreDNS в K3s. Адрес Grafana задан через переменную + resolver, чтобы
@@ -67,6 +68,14 @@ data:
             }
 
             location / {
+                # Заголовки безопасности для приложения (у Grafana свои). proxy_hide_header убирает
+                # одноимённые заголовки ответа приложения, чтобы они не дублировались.
+                proxy_hide_header X-Content-Type-Options;
+                proxy_hide_header X-Frame-Options;
+                proxy_hide_header Referrer-Policy;
+                add_header X-Content-Type-Options "nosniff" always;
+                add_header X-Frame-Options "SAMEORIGIN" always;
+                add_header Referrer-Policy "same-origin" always;
                 proxy_pass http://classapp-web-service:8000;
                 proxy_http_version 1.1;
                 proxy_set_header Host $host;

@@ -139,7 +139,7 @@ make up
 | 2 | `make configure` | генерирует inventory из вывода Terraform, затем Ansible готовит ОС, ставит K3s, создаёт секреты, настраивает бэкапы |
 | 3 | `make deploy` | копирует манифесты на ВМ и запускает `deploy-steps.sh`: БД → миграции → web/nginx → проверка |
 
-Остальные команды: `make destroy` (удалить инфраструктуру с подтверждением), `make check` (те же проверки, что в CI),
+Остальные команды: `make` без аргументов показывает справку и ничего не запускает; `make destroy` (удалить инфраструктуру с подтверждением), `make check` (те же проверки, что в CI),
 `make start | stop | status` (управление ВМ), `make github-secrets` (записать в GitHub адрес ВМ и её SSH-отпечаток).
 
 Пароли администратора приложения и Grafana генерируются Ansible **один раз** и сохраняются в `ansible/last-run.log`
@@ -179,7 +179,7 @@ make up
    - `common`: базовые пакеты, Python-клиент Kubernetes, **swap-файл 2 ГБ** (страховка от OOM на узле с 2 ГБ RAM).
    - `k3s`: установка K3s `v1.30.8+k3s1` (лёгкий Kubernetes, Traefik отключён — вход делает наш nginx). Роль умеет и
      дополнительные master-узлы, и worker-узлы (для режима демонстрации с несколькими узлами), токен кластера хранится
-     в `ansible/group_vars/vault.yml` (не коммитится).
+     в `ansible/group_vars/secrets.yml` (создаётся автоматически, права 600, в `.gitignore`, в образ не попадает).
 2. **Первый master** (`bootstrap_secrets`, `monitoring`, `backup`):
    - `bootstrap_secrets`: создаёт Secret `classapp-secrets` (пароль БД, ключ сессий, учётка администратора) со
      случайными значениями **только если его ещё нет** — повторный запуск пароли не меняет.
@@ -209,7 +209,11 @@ Patroni о роли пода и вешает на него метку `patroni-r
 capabilities, `allowPrivilegeEscalation: false`, профиль seccomp `RuntimeDefault`, лимиты CPU и памяти. Исключения (образы
 Spilo и etcd пишут в корневую ФС) оформлены в `.trivyignore.yaml` с обоснованием.
 
-Файлы `k8s/kustomization.yaml` собирают весь стек для `kubectl apply -k k8s/`.
+**Сетевые политики** (`k8s/networkpolicy.yaml`): к etcd может подключаться только Patroni, к PostgreSQL — только web,
+Job миграций и Patroni, к REST API Patroni — Patroni и Prometheus. Остальные поды кластера до БД не достучатся.
+Если деплой упал, а политик до него не было, скрипт деплоя их удаляет, чтобы ошибка в политике не оставила БД недоступной.
+
+Файл `k8s/kustomization.yaml` собирает весь стек для `kubectl apply -k k8s/`.
 
 ## 8. CI/CD: от коммита до продакшена
 
@@ -275,7 +279,7 @@ Grafana (необязательно) → очистка неиспользуем
 | Цепочка поставки | деплой по дайджесту + проверка подписи; Actions закреплены по SHA |
 | Инфраструктура | Trivy config, `terraform validate`, зашифрованные диск и бэкапы, S3 без публичного доступа, IMDSv2, IAM с минимумом прав, ВМ ходит в S3 по роли без ключей |
 | Секреты | не хранятся в git: Secret создаётся Ansible со случайными значениями; пароли в `last-run.log` (вне git) |
-| Сеть | наружу только 80/443 и 22; Prometheus — только через SSH-туннель |
+| Сеть | наружу только 80/443 и 22; Prometheus — только через SSH-туннель; `NetworkPolicy` ограничивает доступ к БД и etcd; nginx скрывает версию (`server_tokens off`) и добавляет заголовки `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`; SSH-отпечаток ВМ запоминается при первом подключении и дальше проверяется (Ansible, деплой) |
 | Приложение | хэши паролей, `HttpOnly`/`SameSite` cookie, CSRF-защита форм, аудит входов, алерт на подбор пароля |
 
 Все осознанные исключения сканера перечислены с причинами в `.trivyignore.yaml`.

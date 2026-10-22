@@ -57,6 +57,13 @@ spec:
                 -tc "SELECT 1 FROM pg_database WHERE datname = 'classapp'" | grep -q 1 \
                 || psql "postgresql://postgres:${PGPASSWORD}@classapp-db-master:5432/postgres?sslmode=require" \
                      -c "CREATE DATABASE classapp"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
           env:
             - name: PGPASSWORD
               valueFrom:
@@ -77,6 +84,13 @@ spec:
             - alembic
             - upgrade
             - head
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
           env:
             - name: DATABASE_URL
               valueFrom:

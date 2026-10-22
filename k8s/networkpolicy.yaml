@@ -1,0 +1,71 @@
+# Сетевые политики (только входящий трафик): базу и etcd могут открывать только те, кому это нужно.
+# Исходящий трафик не ограничиваем (подам нужны DNS, API Kubernetes, реестры образов).
+# K3s применяет NetworkPolicy встроенным контроллером. Пробы kubelet идут с самого узла и политиками не блокируются.
+#
+# Кто к чему ходит:
+#   etcd (2379)        <- только Patroni
+#   Patroni (5432)     <- web, Job миграций, сам Patroni (репликация, при нескольких репликах)
+#   Patroni (8008)     <- Patroni (между репликами), Prometheus из пространства имён monitoring
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: etcd-allow-patroni
+  namespace: default
+  labels:
+    app.kubernetes.io/name: etcd
+    app.kubernetes.io/part-of: classapp
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: etcd
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: patroni
+      ports:
+        - protocol: TCP
+          port: 2379
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: patroni-allow-clients
+  namespace: default
+  labels:
+    app.kubernetes.io/name: patroni
+    app.kubernetes.io/part-of: classapp
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: patroni
+  policyTypes:
+    - Ingress
+  ingress:
+    # PostgreSQL: приложение, миграции и другие поды Patroni
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: classapp-web
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: classapp-migrate
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: patroni
+      ports:
+        - protocol: TCP
+          port: 5432
+    # REST API Patroni: другие поды Patroni и Prometheus (метрики)
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: patroni
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8008

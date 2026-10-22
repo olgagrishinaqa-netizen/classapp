@@ -4,7 +4,7 @@
   become: true
   gather_facts: false
   vars_files:
-    - group_vars/vault.yml  # <-- ДОБАВИЛИ СЮДА
+    - group_vars/secrets.yml
   pre_tasks:
     - name: Wait for SSH connectivity before running roles
       ansible.builtin.wait_for_connection:
@@ -23,7 +23,7 @@
   become: true
   gather_facts: false
   vars_files:
-    - group_vars/vault.yml  # <-- ДОБАВИЛИ СЮДА
+    - group_vars/secrets.yml
   pre_tasks:
     - name: Wait for SSH connectivity before bootstrap roles
       ansible.builtin.wait_for_connection:

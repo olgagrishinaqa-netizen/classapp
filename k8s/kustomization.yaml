@@ -5,6 +5,7 @@ namespace: default
 resources:
   - etcd.yaml
   - services.yaml
+  - networkpolicy.yaml
   - patroni.yaml
   - migrate-job.yaml
   - classapp-web.yaml

@@ -21,7 +21,7 @@ reports
 *.tfvars
 **/.terraform
 ansible/last-run.log
-ansible/group_vars/vault.yml
+ansible/group_vars/secrets.yml
 ansible/inventory/hosts.ini
 
 # локальные данные

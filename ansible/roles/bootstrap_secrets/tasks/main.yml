@@ -23,17 +23,27 @@
         bootstrap_secrets_secret_key: "{{ lookup('password', '/dev/null length=48 chars=ascii_letters,digits') }}"
         bootstrap_secrets_admin_password: "{{ lookup('password', '/dev/null length=16 chars=ascii_letters,digits') }}"
 
+    # Модуль k8s вместо `kubectl create --from-literal`: пароли не попадают в аргументы процесса
+    # (ps) и скрыты из вывода Ansible (no_log).
     - name: Создать Secret classapp-secrets
-      changed_when: true
-      ansible.builtin.command: >
-        kubectl -n default create secret generic classapp-secrets
-        --from-literal=db-password={{ bootstrap_secrets_db_password }}
-        --from-literal=secret-key={{ bootstrap_secrets_secret_key }}
-        --from-literal=admin-phone={{ classapp_admin_phone }}
-        --from-literal=admin-password={{ bootstrap_secrets_admin_password }}
-        --from-literal=database-url=postgresql://postgres:{{ bootstrap_secrets_db_password }}@classapp-db-master:5432/classapp?sslmode=require
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: classapp-secrets
+            namespace: default
+          type: Opaque
+          stringData:
+            db-password: "{{ bootstrap_secrets_db_password }}"
+            secret-key: "{{ bootstrap_secrets_secret_key }}"
+            admin-phone: "{{ classapp_admin_phone }}"
+            admin-password: "{{ bootstrap_secrets_admin_password }}"
+            database-url: "postgresql://postgres:{{ bootstrap_secrets_db_password }}@classapp-db-master:5432/classapp?sslmode=require"
+      no_log: true
       environment:
-        KUBECONFIG: "{{ kubeconfig }}"
+        K8S_AUTH_KUBECONFIG: "{{ kubeconfig }}"
 
     - name: Показать сгенерированные креды администратора (только сейчас, больше не повторится)
       ansible.builtin.debug:
@@ -73,13 +83,21 @@
         bootstrap_secrets_grafana_password: "{{ lookup('password', '/dev/null length=16 chars=ascii_letters,digits') }}"
 
     - name: Создать Secret classapp-grafana
-      changed_when: true
-      ansible.builtin.command: >
-        kubectl -n monitoring create secret generic classapp-grafana
-        --from-literal=admin-user=admin
-        --from-literal=admin-password={{ bootstrap_secrets_grafana_password }}
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: classapp-grafana
+            namespace: monitoring
+          type: Opaque
+          stringData:
+            admin-user: admin
+            admin-password: "{{ bootstrap_secrets_grafana_password }}"
+      no_log: true
       environment:
-        KUBECONFIG: "{{ kubeconfig }}"
+        K8S_AUTH_KUBECONFIG: "{{ kubeconfig }}"
 
     - name: Показать сгенерированный пароль Grafana (только сейчас)
       ansible.builtin.debug:

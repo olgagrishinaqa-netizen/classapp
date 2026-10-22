@@ -34,6 +34,9 @@ rev_of() { # номер ревизии Deployment / идентификатор �
 }
 
 for w in $WORKLOADS; do REV_BEFORE[$w]="$(rev_of "$w")"; done
+# Сетевые политики откатываются отдельно: если их не было до деплоя и деплой упал, удаляем их,
+# чтобы ошибка в политике не оставила БД недоступной для старой версии приложения.
+NETPOL_BEFORE="$($KUBE get networkpolicy -n default -l app.kubernetes.io/part-of=classapp --no-headers 2>/dev/null | wc -l)"
 
 rollback_changed() {
   echo "ОТКАТ: возвращаю компоненты, изменённые этим деплоем, на прежнюю версию"
@@ -49,6 +52,9 @@ rollback_changed() {
       esac
     fi
   done
+  if [ "$NETPOL_BEFORE" -eq 0 ]; then
+    $KUBE delete networkpolicy -n default -l app.kubernetes.io/part-of=classapp --ignore-not-found || true
+  fi
   for w in $WORKLOADS; do $KUBE rollout status "$w" -n default --timeout=180s || true; done
 }
 
@@ -141,6 +147,14 @@ fi
 $KUBE apply -k "$K8S_DIR"
 $KUBE set image deployment/classapp-web classapp-web="$K8S_IMAGE" -n default
 
+# nginx читает конфиг при старте (ConfigMap примонтирован через subPath и сам не обновляется):
+# при изменении манифеста nginx перезапускается, иначе новая конфигурация не вступит в силу.
+mkdir -p "$STATE_DIR"
+NGINX_CONF_HASH="$(sha256sum "$K8S_DIR/classapp-nginx.yaml" | cut -d' ' -f1)"
+if [ "$NGINX_CONF_HASH" != "$(cat "$STATE_DIR/nginx_manifest_hash" 2>/dev/null || true)" ]; then
+  $KUBE rollout restart deployment/classapp-nginx -n default
+fi
+
 echo "ШАГ 7: rollout всех компонентов и проверка работоспособности"
 rollout_wait deployment/etcd 180
 rollout_wait statefulset/classapp-patroni 600
@@ -165,6 +179,7 @@ fi
 mkdir -p "$STATE_DIR"
 echo "$COMMIT_SHA" > "$STATE_DIR/deployed_sha"
 echo "$K8S_IMAGE" > "$STATE_DIR/deployed_image"
+echo "$NGINX_CONF_HASH" > "$STATE_DIR/nginx_manifest_hash"
 
 echo "ШАГ 8: аннотация деплоя в Grafana (необязательный шаг, ошибки не критичны)"
 # Вертикальная метка «деплой» на графиках дашбордов. Пароль берётся из секрета

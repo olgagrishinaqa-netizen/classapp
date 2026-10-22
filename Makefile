@@ -25,7 +25,13 @@ MONITORING  ?= false
 FORCE       ?= 0
 SSH_OPTS    := -i $(SSH_KEY) -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20
 
-.PHONY: up infra tf-init configure deploy destroy check preflight start stop status github-secrets
+.PHONY: help up infra tf-init configure deploy destroy check preflight start stop status github-secrets
+
+# Голый `make` ничего не создаёт и не меняет: только показывает справку.
+.DEFAULT_GOAL := help
+
+help:
+	@sed -n '1,/^# Требуется/p' $(firstword $(MAKEFILE_LIST)) | sed 's/^# \{0,1\}//'
 
 up: preflight infra configure deploy
 	@echo
@@ -39,8 +45,8 @@ preflight:
 	@[ -n "$(SSH_PUBKEY)" ] && [ -f "$(SSH_KEY)" ] || { \
 	  echo "Нужен SSH-ключ: ~/.ssh/id_ed25519 (или id_rsa) и .pub к нему (ssh-keygen -t ed25519)"; exit 1; }
 
-# Состояние Terraform — в S3 (бакет и таблицу блокировок создаёт bootstrap-state.sh,
-# идемпотентно). Первый запуск сам переносит старое локальное состояние в S3.
+# Состояние Terraform — в S3 (бакет с версионированием создаёт bootstrap-state.sh,
+# идемпотентно; блокировок нет). Первый запуск сам переносит старое локальное состояние в S3.
 tf-init:
 	BACKEND_ARGS="$$(./terraform/bootstrap-state.sh)"; \
 	terraform -chdir=$(TF_DIR) init -input=false -migrate-state -force-copy $$BACKEND_ARGS
@@ -54,14 +60,13 @@ infra: tf-init
 configure:
 	ANSIBLE_SSH_PRIVATE_KEY_FILE=$(SSH_KEY) ./terraform/generate_inventory.sh
 	@# k3s_token создаётся один раз и переиспользуется (иначе новые ноды не присоединятся).
-	@[ -f ansible/group_vars/vault.yml ] || { \
-	  echo "k3s_token: \"$$(openssl rand -hex 32)\"" > ansible/group_vars/vault.yml; \
-	  chmod 600 ansible/group_vars/vault.yml; }
+	@[ -f ansible/group_vars/secrets.yml ] || { \
+	  echo "k3s_token: \"$$(openssl rand -hex 32)\"" > ansible/group_vars/secrets.yml; \
+	  chmod 600 ansible/group_vars/secrets.yml; }
 	cd ansible && ansible-galaxy collection install -r requirements.yml
 	@# Пароли bootstrap_secrets показываются только при первом прогоне — лог дописываем (tee -a),
 	@# чтобы повторный прогон не стёр сохранённые пароли.
-	cd ansible && ANSIBLE_HOST_KEY_CHECKING=False \
-	  ansible-playbook -i inventory/hosts.ini playbook.yml -e monitoring_enabled=$(MONITORING) 2>&1 | tee -a last-run.log
+	cd ansible && ansible-playbook -i inventory/hosts.ini playbook.yml -e monitoring_enabled=$(MONITORING) 2>&1 | tee -a last-run.log
 	@chmod 600 ansible/last-run.log
 
 deploy: tf-init
