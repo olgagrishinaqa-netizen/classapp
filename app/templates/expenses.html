@@ -110,5 +110,10 @@
       {{ expense_form.submit(class="btn-warning w-full") }}
     </form>
   </dialog>
+  <script>
+    // После неудачной отправки заново открываем окно, чтобы были видны ошибки.
+    {% if request.method == "POST" and request.form.get("action") == "add_payment" %}document.getElementById('payment-dialog').showModal();{% endif %}
+    {% if request.method == "POST" and request.form.get("action") == "add_expense" %}document.getElementById('expense-dialog').showModal();{% endif %}
+  </script>
 {% endif %}
 {% endblock %}

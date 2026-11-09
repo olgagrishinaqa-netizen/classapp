@@ -50,11 +50,20 @@ class RegisterForm(FlaskForm):
     submit = SubmitField("Создать аккаунт")
 
 
+class CommaDecimalField(DecimalField):
+    """DecimalField, принимающий запятую как десятичный разделитель («100,50»)."""
+
+    def process_formdata(self, valuelist):
+        if valuelist and isinstance(valuelist[0], str):
+            valuelist = [valuelist[0].strip().replace(",", ".").replace(" ", "")]
+        super().process_formdata(valuelist)
+
+
 class ExpenseForm(FlaskForm):
     """Добавление/редактирование расхода, опционально с чеком."""
 
     title = StringField("Название расхода", validators=[DataRequired(), Length(max=180)])
-    amount = DecimalField(
+    amount = CommaDecimalField(
         "Сумма",
         validators=[DataRequired(), NumberRange(min=Decimal("0.01"))],
         places=2,
@@ -73,7 +82,7 @@ class PaymentForm(FlaskForm):
     """Фиксация взноса от ученика; choices для student_id заполняются во view."""
 
     student_id = SelectField("От кого", coerce=int, validators=[DataRequired()])
-    amount = DecimalField(
+    amount = CommaDecimalField(
         "Сумма взноса",
         validators=[DataRequired(), NumberRange(min=Decimal("0.01"))],
         places=2,

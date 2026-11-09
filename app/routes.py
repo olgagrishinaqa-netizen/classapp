@@ -1298,6 +1298,8 @@ def expenses_page():
                     db.session.commit()
                     flash("Взнос успешно зафиксирован.", "success")
                     return redirect(url_for("main.expenses_page"))
+            else:
+                flash("Взнос не сохранён: проверьте поля формы.", "error")
         elif request.form.get("action") == "add_expense":
             if expense_form.validate_on_submit():
                 receipt_filename = None
@@ -1324,6 +1326,8 @@ def expenses_page():
                     db.session.commit()
                     flash("Расход успешно добавлен.", "success")
                     return redirect(url_for("main.expenses_page"))
+            if expense_form.errors:
+                flash("Расход не сохранён: проверьте поля формы.", "error")
         else:
             flash("Неизвестное действие.", "error")
 
