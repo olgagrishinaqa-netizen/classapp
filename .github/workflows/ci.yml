@@ -288,11 +288,14 @@ jobs:
           docker network create ci
           docker run -d --name pg --network ci \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=classapp postgres:15-alpine
+          # Проверяем по TCP (-h 127.0.0.1): при первом старте образ поднимает
+          # временный сервер только на unix-сокете, и проверка по сокету
+          # проходит раньше, чем стартует настоящий сервер.
           for _ in $(seq 1 60); do
-            docker exec pg pg_isready -U postgres -d classapp >/dev/null 2>&1 && break
+            docker exec pg pg_isready -h 127.0.0.1 -U postgres -d classapp >/dev/null 2>&1 && break
             sleep 1
           done
-          docker exec pg pg_isready -U postgres -d classapp
+          docker exec pg pg_isready -h 127.0.0.1 -U postgres -d classapp
 
           DB_URL="postgresql://postgres:postgres@pg:5432/classapp"
           HARDEN="--user 1000:1000 --read-only --cap-drop ALL --security-opt no-new-privileges"
