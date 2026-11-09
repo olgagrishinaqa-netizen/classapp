@@ -21,7 +21,7 @@ from flask import (
 )
 from sqlalchemy import case, or_
 from sqlalchemy.exc import IntegrityError
-from werkzeug.utils import secure_filename
+from werkzeug.utils import secure_filename as _werkzeug_secure_filename
 
 from .audit import REGISTRATIONS, audit, audit_login, describe_device, mask_phone
 from .extensions import db
@@ -82,6 +82,21 @@ def current_user():
     """Возвращает залогиненного User по session['user_id'] либо None."""
     user_id = session.get("user_id")
     return db.session.get(User, user_id) if user_id else None
+
+
+def secure_filename(filename):
+    """Как werkzeug.secure_filename, но не теряет расширение у кириллических имён:
+    «туалетка.jpg» у werkzeug превращается в «jpg» (без точки), и проверка
+    расширения отклоняет файл. Здесь получится «file.jpg»."""
+    filename = filename or ""
+    stem, dot, extension = filename.rpartition(".")
+    if not dot:
+        return _werkzeug_secure_filename(filename)
+    safe_extension = _werkzeug_secure_filename(extension)
+    if not safe_extension:
+        return ""
+    safe_stem = _werkzeug_secure_filename(stem) or "file"
+    return f"{safe_stem}.{safe_extension}"
 
 
 def _has_allowed_extension(filename, allowed_extensions):
