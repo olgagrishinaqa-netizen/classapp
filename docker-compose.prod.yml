@@ -58,7 +58,7 @@ services:
       - app-network
 
   nginx:
-    image: nginx:1.25-alpine
+    image: nginx:1.30.7-alpine
     restart: unless-stopped
     depends_on:
       web:
