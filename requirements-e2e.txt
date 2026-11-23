@@ -1,0 +1,4 @@
+# Зависимости браузерных (E2E) тестов: всё из requirements-test.txt + Playwright.
+# Браузер ставится отдельно: playwright install --with-deps chromium
+-r requirements-test.txt
+playwright==1.65.2

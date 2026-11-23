@@ -107,7 +107,7 @@ CI (задание migrations) прогоняет миграции на пуст
 | Путь | Назначение |
 |---|---|
 | `app/`, `config.py`, `alembic/` | приложение (Flask), конфигурация, миграции БД |
-| `tests/` | автотесты pytest; `tests/load/locustfile.py` — нагрузочный сценарий |
+| `tests/` | автотесты pytest (бэкенд, HTML-шаблоны, безопасность); `tests/e2e/` — браузерные тесты Playwright; `tests/load/locustfile.py` — нагрузочный сценарий |
 | `Dockerfile`, `.dockerignore`, `entrypoint.sh`, `gunicorn.conf.py` | образ приложения |
 | `requirements.txt` / `-test.txt` / `-dev.txt` | зависимости: только продакшен (в образе) / для CI / для разработчика |
 | `terraform/aws/` | **основная IaC**: ВМ, Elastic IP, security group, IAM, S3 бэкапов, расписание ВМ |
@@ -227,7 +227,8 @@ Job миграций и Patroni, к REST API Patroni — Patroni и Prometheus. 
 | `secrets-scan` | gitleaks по всей истории: не закоммичены ли пароли и ключи |
 | `dependency-audit` | `pip-audit`: известные уязвимости в зависимостях |
 | `iac` | `terraform fmt/validate`, `ansible-lint`, `kubeconform` (валидность манифестов), Trivy config (небезопасные настройки IaC/Dockerfile/манифестов) |
-| `test` | pytest на SQLite **и** PostgreSQL, покрытие кода не ниже 70%, отчёты сохраняются как артефакты |
+| `test` | pytest на SQLite **и** PostgreSQL (бэкенд, API, HTML-шаблоны, XSS/CSRF), покрытие кода не ниже 95%, отчёты сохраняются как артефакты |
+| `e2e` | браузерные тесты фронтенда (Playwright + Chromium): JavaScript, диалоги, вкладки, карусель, тема, маска телефона; при падении в артефакты уходят скриншоты |
 | `migrations` | на пустой PostgreSQL: `upgrade head` → `alembic check` (модели и миграции не расходятся) → `downgrade base` → снова `upgrade head` |
 | `build` | сборка образа **один раз** → скан Trivy (HIGH/CRITICAL блокируют) → **дымовой тест** (миграции + запуск контейнера с теми же ограничениями, что в Kubernetes: не root, read-only, без capabilities; проверка `/healthz`, входа администратора, закрытого API) → SBOM → публикация в GHCR → подписанные аттестации |
 | `notify` | сообщение о результате в Telegram |
@@ -358,11 +359,21 @@ cp .env.sample .env
 docker compose -f docker-compose.dev.yml up --build       # http://localhost:8000
 pip install -r requirements.txt -r requirements-dev.txt
 pytest                                                    # SQLite; TEST_DATABASE_URL — для PostgreSQL
+pip install -r requirements-e2e.txt && playwright install chromium
+pytest -m e2e                                             # браузерные тесты фронтенда (по умолчанию не запускаются)
 make check                                                # те же проверки, что в CI
 locust -f tests/load/locustfile.py --host=http://localhost:8000   # нагрузочный тест
 ```
 
 Хуки pre-commit: `pre-commit install --hook-type pre-push` (линтеры запускаются перед отправкой).
+
+**Что покрывают тесты.** Обычный `pytest` (около 780 тестов, покрытие ≈ 99%): модели, формы, конфигурация, фабрика
+приложения, все HTML-страницы и JSON API для каждой роли, загрузка файлов, журнал входов, а также разбор отрисованных
+шаблонов (структура страниц, навигация, подписи полей, элементы управления по ролям, внутренние ссылки), экранирование
+пользовательского ввода (XSS) и CSRF-токены. Браузерные тесты (`pytest -m e2e`, около 110 тестов) каждый раз поднимают
+отдельный сервер с чистой SQLite-базой; Tailwind CDN и шрифты заменяются заглушками, поэтому интернет не нужен.
+Известные недочёты доступности помечены `xfail(strict=True)` с описанием причины: когда шаблон исправят, тест сам
+сообщит, что отметку пора убрать.
 
 ## 14. Принятые решения и известные ограничения
 

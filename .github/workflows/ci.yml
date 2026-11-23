@@ -186,10 +186,10 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-test.txt
 
-      - name: Run tests with coverage (minimum 70%)
+      - name: Run tests with coverage (minimum 95%)
         run: |
           mkdir -p reports
-          pytest --junitxml=reports/junit.xml --cov=app --cov-report=xml:reports/coverage.xml --cov-report=term --cov-fail-under=70
+          pytest --junitxml=reports/junit.xml --cov=app --cov=config --cov-report=xml:reports/coverage.xml --cov-report=term --cov-fail-under=95
 
       - name: Upload test reports
         if: always()
@@ -198,6 +198,47 @@ jobs:
           name: test-reports-${{ matrix.db }}
           path: reports/
           retention-days: 14
+
+  # Браузерные тесты фронтенда (Playwright + Chromium): JavaScript, диалоги, вкладки, карусель.
+  # Сторонние CDN в тестах подменены заглушками, интернет не нужен.
+  e2e:
+    name: E2E (browser tests, Playwright)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-e2e.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-e2e.txt
+
+      - name: Install Chromium
+        run: playwright install --with-deps chromium
+
+      - name: Run browser tests
+        run: |
+          mkdir -p reports
+          pytest -m e2e --junitxml=reports/e2e-junit.xml
+
+      - name: Upload browser test reports and failure screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e2e-reports
+          path: reports/
+          retention-days: 14
+          if-no-files-found: ignore
+
 
   migrations:
     name: Migrations (alembic on PostgreSQL)
@@ -248,7 +289,7 @@ jobs:
   # ---------------------------------------------------------------- образ
   build:
     name: Build, scan, smoke-test and publish image
-    needs: [lint, secrets-scan, dependency-audit, iac, test, migrations]
+    needs: [lint, secrets-scan, dependency-audit, iac, test, e2e, migrations]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -399,7 +440,7 @@ jobs:
   # ---------------------------------------------------------------- уведомление
   notify:
     name: Notify CI result
-    needs: [lint, secrets-scan, dependency-audit, iac, test, migrations, build]
+    needs: [lint, secrets-scan, dependency-audit, iac, test, e2e, migrations, build]
     if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-24.04
     timeout-minutes: 5

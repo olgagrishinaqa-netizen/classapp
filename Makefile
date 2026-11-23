@@ -105,7 +105,7 @@ destroy: tf-init
 
 check:
 	pre-commit run --all-files --hook-stage push
-	pytest -q --cov=app --cov-fail-under=70
+	pytest -q --cov=app --cov=config --cov-fail-under=95
 	pip-audit -r requirements.txt --progress-spinner off
 	terraform fmt -check -recursive terraform
 	terraform -chdir=$(TF_DIR) init -backend=false -input=false
