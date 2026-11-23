@@ -22,6 +22,8 @@ from app.models import (
 )
 
 PAYLOAD = "<img src=x onerror=alert(1)>\"'<script>alert(2)</script>"
+# Для колонок короче 40 символов (кабинет урока): PostgreSQL, в отличие от SQLite, обрезку не прощает.
+SHORT_PAYLOAD = "<img src=x onerror=alert(1)>"
 ATTR_PAYLOAD = '" onmouseover="alert(3)" x="'
 
 
@@ -62,7 +64,11 @@ def hostile_data(db, wipe):
             News(title=PAYLOAD, description=PAYLOAD + ATTR_PAYLOAD, status="published"),
             Task(title=PAYLOAD, description=PAYLOAD),
             ScheduleEntry(
-                day_of_week=0, lesson_number=1, subject=PAYLOAD, teacher=ATTR_PAYLOAD, room=PAYLOAD
+                day_of_week=0,
+                lesson_number=1,
+                subject=PAYLOAD,
+                teacher=ATTR_PAYLOAD,
+                room=SHORT_PAYLOAD,
             ),
             BellScheduleEntry(lesson_number=1, start_time=time(8, 0), end_time=time(9, 0)),
             GeneralInfo(description=PAYLOAD, file_name=PAYLOAD, file_path="f.pdf"),
