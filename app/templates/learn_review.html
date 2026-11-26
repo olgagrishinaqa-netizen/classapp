@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "_quiz.html" import question_box %}
+{% block title %}Работа над ошибками | Учёба{% endblock %}
+{% block content %}
+<header class="mb-5">
+  <a href="{{ url_for('main.learn_page') }}" class="text-sm font-bold text-cyan-700 dark:text-cyan-300">← Учёба</a>
+  <p class="eyebrow-neon mt-2">Ученик</p>
+  <h1 class="mt-1 font-display text-xl font-bold tracking-tight text-slate-900 dark:text-white">Работа над ошибками</h1>
+  <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">Здесь задания, на которых ты ошибся в последний раз. Ответь верно — и они исчезнут из списка.</p>
+</header>
+
+{% if questions %}
+<form id="quiz-form" class="space-y-4" data-check-url="{{ url_for('main.learn_review_check') }}" data-csrf="{{ csrf_token_value }}" novalidate>
+  {% for question in questions %}
+    {{ question_box(question, loop.index, question.rule, question.example, question.retry_url, label=question.topic_title ~ (' · ' ~ question.par if question.par else '')) }}
+  {% endfor %}
+
+  <button type="submit" id="quiz-submit" class="btn-cyber w-full">Проверить</button>
+  <p id="quiz-summary" class="hidden glass-card p-4 text-center font-bold text-slate-900 dark:text-white" role="status"></p>
+</form>
+{% include "_quiz_script.html" %}
+{% else %}
+<section class="glass-card p-6 text-center">
+  <p class="font-bold text-slate-900 dark:text-white">Неисправленных ошибок нет. Отличная работа!</p>
+  <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">Пройди тесты по темам — если появятся ошибки, они соберутся здесь.</p>
+  <a href="{{ url_for('main.learn_page') }}" class="btn-cyber mt-4">К предметам</a>
+</section>
+{% endif %}
+{% endblock %}

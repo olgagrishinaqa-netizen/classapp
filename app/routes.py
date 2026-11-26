@@ -44,11 +44,13 @@ from .forms import (
     UserManagementForm,
     UserRoleForm,
 )
+from .learning import stats as learning_stats
 from .models import (
     BellScheduleEntry,
     Expense,
     ExpenseReport,
     GeneralInfo,
+    LearningAnswer,
     LearningAttempt,
     LoginEvent,
     News,
@@ -1851,7 +1853,12 @@ def learn_page():
         )
         subjects.append({**subject, "topics_total": topics_total, "topics_done": done})
     return render_template(
-        "learn.html", subjects=subjects, current_user=current_user(), user=current_user()
+        "learn.html",
+        subjects=subjects,
+        problems=learning_stats.problem_rules(current_user().id),
+        unresolved=learning_stats.unresolved_count(current_user().id),
+        current_user=current_user(),
+        user=current_user(),
     )
 
 
@@ -1884,6 +1891,7 @@ def learn_topic_page(subject_slug, topic_slug):
         subject=learning.get_subject(subject_slug),
         topic=topic,
         questions=[learning.public_question(q) for q in topic["questions"]],
+        retry_url=url_for("main.learn_retry", subject_slug=subject_slug, topic_slug=topic_slug),
         csrf_token_value=generate_csrf(),
         current_user=current_user(),
         user=current_user(),
@@ -1939,13 +1947,105 @@ def learn_check(subject_slug, topic_slug):
 
     score, results = learning.check_answers(topic, answers)
     total = len(topic["questions"])
-    db.session.add(
-        LearningAttempt(
-            user_id=user.id, subject=subject_slug, topic=topic_slug, score=score, total=total
-        )
+    attempt = LearningAttempt(
+        user_id=user.id, subject=subject_slug, topic=topic_slug, score=score, total=total
     )
+    db.session.add(attempt)
+    db.session.flush()
+    _record_answers(user.id, attempt.id, subject_slug, topic_slug, results)
     db.session.commit()
     return jsonify(score=score, total=total, results=results)
+
+
+def _record_answers(user_id, attempt_id, subject_slug, topic_slug, results):
+    """Сохраняет ответы по заданиям (только данные ответы) для аналитики ошибок."""
+    for result in results:
+        if result["answered"]:
+            db.session.add(
+                LearningAnswer(
+                    user_id=user_id,
+                    attempt_id=attempt_id,
+                    subject=subject_slug,
+                    topic=topic_slug,
+                    question_id=result["id"],
+                    correct=result["correct"],
+                )
+            )
+
+
+@bp.get("/learn/review")
+@learning_required
+def learn_review_page():
+    """«Работа над ошибками»: неисправленные задания из разных тем (до 10 штук)."""
+    user = current_user()
+    questions = []
+    for key, topic, question in learning_stats.review_items(user.id):
+        item = learning.public_question({**question, "id": key})
+        item.update(
+            subject=topic["subject"],
+            topic_title=topic["title"],
+            par=topic["par"],
+            rule=topic["rule"],
+            example=topic["example"],
+            retry_url=url_for(
+                "main.learn_retry", subject_slug=topic["subject"], topic_slug=topic["slug"]
+            ),
+        )
+        questions.append(item)
+    return render_template(
+        "learn_review.html",
+        questions=questions,
+        csrf_token_value=generate_csrf(),
+        current_user=user,
+        user=user,
+    )
+
+
+@bp.post("/learn/review/check")
+@auth_required
+def learn_review_check():
+    """Проверяет ответы работы над ошибками, обновляет учёт неисправленных заданий."""
+    user, error = _learning_api_guard()
+    if error:
+        return error
+    payload = request.get_json(silent=True)
+    answers = payload.get("answers") if isinstance(payload, dict) else None
+    if (
+        not isinstance(answers, dict)
+        or not answers
+        or len(answers) > learning_stats.REVIEW_SIZE * 3
+    ):
+        return jsonify(error="Некорректный формат ответов"), 400
+
+    results = []
+    for key, answer in answers.items():
+        found = learning.find_question(key)
+        if not found:
+            continue
+        topic, question = found
+        result = learning.check_one(question, answer, result_id=key)
+        results.append(result)
+        if result["answered"]:
+            db.session.add(
+                LearningAnswer(
+                    user_id=user.id,
+                    attempt_id=None,
+                    subject=topic["subject"],
+                    topic=topic["slug"],
+                    question_id=question["id"],
+                    correct=result["correct"],
+                )
+            )
+    if not results:
+        return jsonify(error="Задания не найдены"), 404
+    db.session.commit()
+    score = sum(1 for r in results if r["correct"])
+    return jsonify(
+        score=score,
+        total=len(results),
+        results=results,
+        remaining=learning_stats.unresolved_count(user.id),
+    )
 
 
 @bp.get("/children")
@@ -2004,7 +2104,13 @@ def children_results_page():
                     }
                 )
             subjects.append({"title": subject["title"], "topics": topics})
-        report.append({"child": child, "subjects": subjects})
+        report.append(
+            {
+                "child": child,
+                "subjects": subjects,
+                "problems": learning_stats.problem_rules(child.id, 3),
+            }
+        )
 
     return render_template(
         "children.html", report=report, current_user=user, user=user, active_role=user.role

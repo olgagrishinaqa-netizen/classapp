@@ -7,6 +7,28 @@
   <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">Выбери предмет, прочитай правило и пройди тест. Если ошибёшься, подсказка напомнит правило.</p>
 </header>
 
+<section class="glass-card mb-5 p-4" aria-labelledby="problems-title">
+  <h2 id="problems-title" class="font-bold text-slate-900 dark:text-white">Проблемные правила</h2>
+  {% if problems %}
+    <ul class="mt-3 space-y-2">
+      {% for rule in problems %}
+      <li>
+        <a href="{{ url_for('main.learn_topic_page', subject_slug=rule.subject, topic_slug=rule.topic) }}" class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-4 py-3 text-sm transition hover:border-cyan-400 dark:border-white/10">
+          <span class="min-w-0">
+            <span class="block font-bold text-slate-900 dark:text-white">{% if rule.par %}{{ rule.par }}. {% endif %}{{ rule.title }}</span>
+            <span class="block text-xs text-slate-500 dark:text-slate-400">ошибок: {{ rule.wrong }} из {{ rule.answered }} ответов</span>
+          </span>
+          <span class="badge-hard shrink-0">не исправлено: {{ rule.unresolved }}</span>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    <a href="{{ url_for('main.learn_review_page') }}" class="btn-warning mt-4 w-full">Работа над ошибками ({{ unresolved }})</a>
+  {% else %}
+    <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">Неисправленных ошибок нет. Проходи тесты — проблемные правила появятся здесь, если что-то не получится.</p>
+  {% endif %}
+</section>
+
 <div class="grid gap-3">
   {% for subject in subjects %}
   <a href="{{ url_for('main.learn_subject_page', subject_slug=subject.slug) }}" class="glass-card flex items-center gap-4 p-4 transition active:scale-[0.98]">

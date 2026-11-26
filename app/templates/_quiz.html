@@ -1,0 +1,20 @@
+{% macro question_box(question, number, rule, example, retry_url, label="") %}
+<fieldset class="quiz-question glass-card p-4" data-question="{{ question.id }}" data-rule="{{ rule }}" data-example="{{ example }}" data-retry-url="{{ retry_url }}">
+  <legend class="sr-only">Задание {{ number }}</legend>
+  {% if label %}<p class="mb-1 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{{ label }}</p>{% endif %}
+  <p class="font-bold text-slate-900 dark:text-white"><span class="text-cyan-700 dark:text-cyan-300">{{ number }}.</span> {{ question.text }}</p>
+  {% if question.kind == 'choice' %}
+    <div class="mt-3 grid gap-2">
+      {% for option in question.options %}
+      <label class="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-slate-200 px-4 text-sm text-slate-800 dark:border-white/10 dark:text-slate-100">
+        <input type="radio" name="{{ question.id }}" value="{{ loop.index0 }}" class="h-4 w-4">
+        <span>{{ option }}</span>
+      </label>
+      {% endfor %}
+    </div>
+  {% else %}
+    <input type="text" name="{{ question.id }}" autocomplete="off" autocapitalize="off" class="input-cyber mt-3" placeholder="Твой ответ" aria-label="Ответ на задание {{ number }}">
+  {% endif %}
+  <p class="quiz-feedback mt-3 hidden rounded-xl px-4 py-3 text-sm" role="status"></p>
+</fieldset>
+{% endmacro %}

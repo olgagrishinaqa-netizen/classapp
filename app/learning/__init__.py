@@ -95,23 +95,45 @@ def check_retry(topic, question_id, answer):
     return None
 
 
+def check_one(question, answer, result_id=None):
+    """Проверяет ответ на одно задание. Возвращает словарь результата: id, correct, answered
+    и (для неверного ответа) hint и public-версию аналогичного задания retry."""
+    answered = answer is not None and str(answer).strip() != ""
+    correct = _is_correct(question, answer)
+    result = {"id": result_id or question["id"], "correct": correct, "answered": answered}
+    if answered and not correct:
+        result["hint"] = question["hint"]
+        if "retry" in question:
+            result["retry"] = public_question(question["retry"])
+    return result
+
+
 def check_answers(topic, answers):
     """Проверяет ответы ученика. answers — словарь {id вопроса: ответ}.
 
     Возвращает (score, results): для каждого вопроса — correct, answered и
     hint (только для неверных ответов на заданные вопросы)."""
     answers = answers if isinstance(answers, dict) else {}
-    results = []
-    score = 0
+    results = [check_one(q, answers.get(q["id"])) for q in topic["questions"]]
+    return sum(r["correct"] for r in results), results
+
+
+REVIEW_KEY_SEPARATOR = "/"
+
+
+def review_key(subject_slug, topic_slug, question_id):
+    return REVIEW_KEY_SEPARATOR.join((subject_slug, topic_slug, question_id))
+
+
+def find_question(key):
+    """По ключу «предмет/тема/qN» возвращает (тема, задание) или None, если такого нет."""
+    parts = str(key).split(REVIEW_KEY_SEPARATOR)
+    if len(parts) != 3:
+        return None
+    topic = get_topic(parts[0], parts[1])
+    if not topic:
+        return None
     for question in topic["questions"]:
-        answer = answers.get(question["id"])
-        answered = answer is not None and str(answer).strip() != ""
-        correct = _is_correct(question, answer)
-        score += int(correct)
-        result = {"id": question["id"], "correct": correct, "answered": answered}
-        if answered and not correct:
-            result["hint"] = question["hint"]
-            if "retry" in question:
-                result["retry"] = public_question(question["retry"])
-        results.append(result)
-    return score, results
+        if question["id"] == parts[2]:
+            return topic, question
+    return None

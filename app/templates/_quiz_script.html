@@ -1,0 +1,133 @@
+{# Скрипт проверки теста: форма #quiz-form с data-check-url и data-csrf; у каждого задания data-rule/-example/-retry-url. #}
+<script>
+  (function () {
+    var form = document.getElementById('quiz-form');
+    var summary = document.getElementById('quiz-summary');
+    var button = document.getElementById('quiz-submit');
+    var GOOD = 'rounded-xl px-4 py-3 text-sm bg-emerald-50 text-emerald-800 dark:bg-emerald-400/10 dark:text-emerald-300';
+    var BAD = 'rounded-xl px-4 py-3 text-sm bg-rose-50 text-rose-800 dark:bg-rose-500/10 dark:text-rose-300';
+    var NONE = 'rounded-xl px-4 py-3 text-sm bg-amber-50 text-amber-800 dark:bg-amber-400/10 dark:text-amber-300';
+
+    function collect() {
+      var answers = {};
+      form.querySelectorAll('.quiz-question').forEach(function (box) {
+        var id = box.dataset.question;
+        var radio = box.querySelector('input[type=radio]:checked');
+        var text = box.querySelector('input[type=text]');
+        if (radio) answers[id] = radio.value;
+        else if (text) answers[id] = text.value;
+      });
+      return answers;
+    }
+
+    function show(box, cls, message) {
+      var feedback = box.querySelector('.quiz-feedback');
+      feedback.className = 'quiz-feedback mt-3 ' + cls;
+      feedback.textContent = message;
+    }
+
+    function el(tag, className, text) {
+      var node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text) node.textContent = text;
+      return node;
+    }
+
+    // Карточка подсказки: правило, пример, объяснение ошибки и вторая попытка на аналогичном задании.
+    function showHintCard(box, item) {
+      var feedback = box.querySelector('.quiz-feedback');
+      feedback.className = 'quiz-feedback mt-3 ' + BAD;
+      feedback.textContent = '';
+      feedback.appendChild(el('p', 'font-bold', 'Подумай ещё раз. Вот правило:'));
+      feedback.appendChild(el('p', 'mt-2', box.dataset.rule));
+      if (box.dataset.example) {
+        var example = el('p', 'mt-2');
+        example.appendChild(el('span', 'font-bold', 'Пример. '));
+        example.appendChild(document.createTextNode(box.dataset.example));
+        feedback.appendChild(example);
+      }
+      var why = el('p', 'mt-2');
+      why.appendChild(el('span', 'font-bold', 'Почему так: '));
+      why.appendChild(document.createTextNode(item.hint));
+      feedback.appendChild(why);
+      if (item.retry) feedback.appendChild(buildRetry(item.retry, box.dataset.retryUrl));
+    }
+
+    function buildRetry(retry, retryUrl) {
+      var wrap = el('div', 'mt-3 rounded-xl border border-rose-200 bg-white/70 p-3 dark:border-white/10 dark:bg-white/5');
+      wrap.appendChild(el('p', 'font-bold', 'Попробуй похожее задание:'));
+      wrap.appendChild(el('p', 'mt-1', retry.text));
+      var field;
+      if (retry.kind === 'choice') {
+        field = el('div', 'mt-2 grid gap-2');
+        retry.options.forEach(function (option, index) {
+          var label = el('label', 'flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 text-slate-800 dark:border-white/10 dark:bg-transparent dark:text-slate-100');
+          var radio = document.createElement('input');
+          radio.type = 'radio'; radio.name = retry.id; radio.value = String(index);
+          label.appendChild(radio);
+          label.appendChild(el('span', '', option));
+          field.appendChild(label);
+        });
+      } else {
+        field = document.createElement('input');
+        field.type = 'text'; field.autocomplete = 'off'; field.className = 'input-cyber mt-2';
+        field.setAttribute('aria-label', 'Ответ на похожее задание');
+      }
+      var button = el('button', 'btn-ghost mt-2 w-full', 'Проверить');
+      button.type = 'button';
+      var result = el('p', 'mt-2 font-bold');
+      button.addEventListener('click', function () {
+        var chosen = retry.kind === 'choice' ? field.querySelector('input:checked') : field;
+        var value = chosen ? chosen.value : '';
+        fetch(retryUrl, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json', 'X-CSRFToken': form.dataset.csrf},
+          credentials: 'same-origin',
+          body: JSON.stringify({id: retry.id, answer: value})
+        }).then(function (r) { return r.json(); }).then(function (data) {
+          if (data.correct) result.textContent = 'Верно! Теперь вернись к заданию выше и поправь ответ.';
+          else if (data.error) result.textContent = data.error;
+          else result.textContent = 'Пока неверно. Перечитай правило и попробуй ещё раз.';
+        }).catch(function () { result.textContent = 'Не удалось проверить, попробуй ещё раз.'; });
+      });
+      wrap.appendChild(field); wrap.appendChild(button); wrap.appendChild(result);
+      return wrap;
+    }
+
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      button.disabled = true;
+      fetch(form.dataset.checkUrl, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': form.dataset.csrf},
+        credentials: 'same-origin',
+        body: JSON.stringify({answers: collect()})
+      }).then(function (response) {
+        return response.json().then(function (data) { return {ok: response.ok, data: data}; });
+      }).then(function (res) {
+        if (!res.ok) throw new Error(res.data.error || 'Не удалось проверить ответы');
+        res.data.results.forEach(function (item) {
+          var box = form.querySelector('[data-question="' + item.id + '"]');
+          if (!box) return;
+          if (item.correct) show(box, GOOD, 'Верно!');
+          else if (!item.answered) show(box, NONE, 'Выбери или впиши ответ.');
+          else showHintCard(box, item);
+        });
+        summary.classList.remove('hidden');
+        summary.textContent = res.data.score === res.data.total
+          ? 'Отлично! Все ' + res.data.total + ' заданий выполнены верно.'
+          : 'Результат: ' + res.data.score + ' из ' + res.data.total + '. Прочитай подсказки и попробуй ещё раз.';
+        if (typeof res.data.remaining === 'number') {
+          summary.textContent += res.data.remaining === 0
+            ? ' Неисправленных ошибок не осталось!'
+            : ' Осталось неисправленных заданий: ' + res.data.remaining + '.';
+        }
+      }).catch(function (error) {
+        summary.classList.remove('hidden');
+        summary.textContent = error.message;
+      }).finally(function () {
+        button.disabled = false;
+      });
+    });
+  })();
+</script>

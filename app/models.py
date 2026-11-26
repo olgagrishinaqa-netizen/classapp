@@ -298,3 +298,31 @@ class LearningAttempt(db.Model):
     created_at = db.Column(db.DateTime, default=local_now, nullable=False)
 
     __table_args__ = (db.Index("ix_learning_attempt_user_topic", "user_id", "subject", "topic"),)
+
+
+class LearningAnswer(db.Model):
+    """Ответ ученика на конкретное задание (только данные ответы, не пропущенные).
+
+    Нужен для аналитики «проблемных правил» и для «Работы над ошибками»: задание считается
+    неисправленным, если ПОСЛЕДНИЙ ответ на него был неверным. Задание определяется тройкой
+    (предмет, тема, номер задания qN); номера позиционные — новые задания добавляют в конец темы.
+    """
+
+    __tablename__ = "learning_answer"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    attempt_id = db.Column(
+        db.Integer, db.ForeignKey("learning_attempt.id", ondelete="CASCADE"), nullable=True
+    )
+    subject = db.Column(db.String(32), nullable=False)
+    topic = db.Column(db.String(64), nullable=False)
+    question_id = db.Column(db.String(16), nullable=False)
+    correct = db.Column(db.Boolean, nullable=False)
+    created_at = db.Column(db.DateTime, default=local_now, nullable=False)
+
+    __table_args__ = (
+        db.Index("ix_learning_answer_user_question", "user_id", "subject", "topic", "question_id"),
+    )

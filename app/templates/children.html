@@ -9,6 +9,16 @@
 {% for item in report %}
 <section class="glass-card mb-4 p-4">
   <h2 class="font-bold text-slate-900 dark:text-white">{{ item.child.full_name }}</h2>
+  {% if item.problems %}
+  <div class="mt-3 rounded-xl bg-rose-50 p-3 dark:bg-rose-500/10">
+    <p class="text-xs font-bold uppercase tracking-wider text-rose-700 dark:text-rose-300">Проблемные правила</p>
+    <ul class="mt-2 space-y-1 text-sm text-rose-900 dark:text-rose-200">
+      {% for rule in item.problems %}
+      <li>{% if rule.par %}{{ rule.par }}. {% endif %}{{ rule.title }} — не исправлено: {{ rule.unresolved }} (ошибок {{ rule.wrong }} из {{ rule.answered }})</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
   {% for subject in item.subjects %}
   <details class="mt-3">
     <summary class="cursor-pointer text-sm font-bold text-cyan-700 dark:text-cyan-300">{{ subject.title }}</summary>

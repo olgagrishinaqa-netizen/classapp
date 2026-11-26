@@ -33,7 +33,7 @@ class TestHintCard:
         student_page.goto("/learn/belarusian/word-combination")
         box = student_page.locator("[data-question=q1]")
         box.get_by_label("лісце падае", exact=True).check()  # неверно: это грамматическая основа
-        student_page.get_by_role("button", name="Проверить", exact=True).first.click()
+        student_page.locator("#quiz-submit").click()
 
         feedback = box.locator(".quiz-feedback")
         expect(feedback).to_contain_text("Вот правило:")
@@ -49,7 +49,7 @@ class TestHintCard:
         student_page.goto("/learn/belarusian/word-combination")
         box = student_page.locator("[data-question=q1]")
         box.get_by_label("лісце падае", exact=True).check()
-        student_page.get_by_role("button", name="Проверить", exact=True).first.click()
+        student_page.locator("#quiz-submit").click()
         feedback = box.locator(".quiz-feedback")
         expect(feedback).to_contain_text("Попробуй похожее задание:")
 
@@ -72,5 +72,45 @@ class TestHintCard:
         }
         for qid, label in right.items():
             student_page.locator(f"[data-question={qid}]").get_by_label(label, exact=True).check()
-        student_page.get_by_role("button", name="Проверить", exact=True).first.click()
+        student_page.locator("#quiz-submit").click()
         expect(student_page.locator("#quiz-summary")).to_contain_text("Отлично!")
+
+
+class TestMistakesReview:
+    def test_mistake_becomes_problem_rule_and_is_fixed_in_review(self, student_page):
+        # 1. ошибаемся в первом задании темы
+        student_page.goto("/learn/belarusian/word-combination")
+        box = student_page.locator("[data-question=q1]")
+        box.get_by_label("лісце падае", exact=True).check()
+        student_page.locator("#quiz-submit").click()
+        expect(box.locator(".quiz-feedback")).to_contain_text("Вот правило:")
+
+        # 2. на главной раздела появилось проблемное правило и кнопка
+        student_page.goto("/learn")
+        expect(student_page.get_by_role("heading", name="Проблемные правила")).to_be_visible()
+        expect(student_page.get_by_text("не исправлено: 1")).to_be_visible()
+        student_page.get_by_role("link", name="Работа над ошибками (1)").click()
+        student_page.wait_for_url("**/learn/review")
+
+        # 3. неверный ответ — снова карточка подсказки, остаётся неисправленным
+        review_box = student_page.locator("[data-question='belarusian/word-combination/q1']")
+        expect(review_box).to_contain_text("§ 15–16")
+        review_box.get_by_label("лісце падае", exact=True).check()
+        student_page.locator("#quiz-submit").click()
+        expect(review_box.locator(".quiz-feedback")).to_contain_text("Попробуй похожее задание:")
+        expect(student_page.locator("#quiz-summary")).to_contain_text(
+            "Осталось неисправленных заданий: 1"
+        )
+
+        # 4. верный ответ — ошибок не осталось
+        review_box.get_by_label("жоўтае лісце", exact=True).check()
+        student_page.locator("#quiz-submit").click()
+        expect(student_page.locator("#quiz-summary")).to_contain_text(
+            "Неисправленных ошибок не осталось"
+        )
+
+        # 5. после обновления страницы список пуст
+        student_page.goto("/learn/review")
+        expect(student_page.get_by_text("Неисправленных ошибок нет")).to_be_visible()
+        student_page.goto("/learn")
+        expect(student_page.get_by_text("Работа над ошибками (", exact=False)).to_have_count(0)
