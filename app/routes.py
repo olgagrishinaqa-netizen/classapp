@@ -1968,7 +1968,13 @@ def children_results_page():
                     (child.id, subject["slug"], slug), (None, len(topic["questions"]), 0, None)
                 )
                 topics.append(
-                    {"title": topic["title"], "best": best, "total": total, "count": count, "last": last}
+                    {
+                        "title": topic["title"],
+                        "best": best,
+                        "total": total,
+                        "count": count,
+                        "last": last,
+                    }
                 )
             subjects.append({"title": subject["title"], "topics": topics})
         report.append({"child": child, "subjects": subjects})

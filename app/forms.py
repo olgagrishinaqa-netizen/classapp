@@ -162,7 +162,9 @@ class UserManagementForm(FlaskForm):
         choices=[("parent", "Родитель"), ("student", "Ученик"), ("admin", "Администратор")],
         validators=[DataRequired()],
     )
-    parent_id = SelectField("Родитель ученика", choices=[], validate_choice=False, validators=[Optional()])
+    parent_id = SelectField(
+        "Родитель ученика", choices=[], validate_choice=False, validators=[Optional()]
+    )
     password = PasswordField("Пароль", validators=[Optional(), Length(min=6, max=128)])
     submit = SubmitField("Сохранить пользователя")
 

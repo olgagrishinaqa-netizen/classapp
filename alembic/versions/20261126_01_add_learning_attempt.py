@@ -8,6 +8,7 @@ Create Date: 2026-11-26 12:00:00
 from typing import Sequence, Union
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "20261126_01"
@@ -23,7 +24,9 @@ def upgrade() -> None:
     op.create_table(
         "learning_attempt",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("user_id", sa.Integer(), sa.ForeignKey("user.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "user_id", sa.Integer(), sa.ForeignKey("user.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("subject", sa.String(length=32), nullable=False),
         sa.Column("topic", sa.String(length=64), nullable=False),
         sa.Column("score", sa.Integer(), nullable=False),

@@ -288,7 +288,9 @@ class LearningAttempt(db.Model):
     __tablename__ = "learning_attempt"
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     subject = db.Column(db.String(32), nullable=False)
     topic = db.Column(db.String(64), nullable=False)
     score = db.Column(db.Integer, nullable=False)

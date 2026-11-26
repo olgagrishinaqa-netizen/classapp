@@ -8,6 +8,7 @@ Create Date: 2026-11-27 12:00:00
 from typing import Sequence, Union
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "20261127_01"
@@ -41,11 +42,15 @@ def downgrade() -> None:
         for fk in inspector.get_foreign_keys("user")
         if fk.get("name") and fk["constrained_columns"] == ["parent_id"]
     ]
-    index_names = [i["name"] for i in inspector.get_indexes("user") if i["column_names"] == ["parent_id"]]
+    index_names = [
+        i["name"] for i in inspector.get_indexes("user") if i["column_names"] == ["parent_id"]
+    ]
     with op.batch_alter_table("user") as batch:
         for name in index_names:
             batch.drop_index(name)
-        if bind.dialect.name != "sqlite":  # SQLite пересоздаёт таблицу и теряет FK вместе со столбцом
+        if (
+            bind.dialect.name != "sqlite"
+        ):  # SQLite пересоздаёт таблицу и теряет FK вместе со столбцом
             for name in fk_names:
                 batch.drop_constraint(name, type_="foreignkey")
         batch.drop_column("parent_id")

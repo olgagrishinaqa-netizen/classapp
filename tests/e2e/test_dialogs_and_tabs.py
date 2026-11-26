@@ -411,14 +411,28 @@ class TestUsers:
         )
         expect(admin_page.locator("#create-user-dialog")).to_be_visible()
 
-    def test_user_is_created_edited_and_can_log_in(self, admin_page, login):
+    def test_user_is_created_edited_and_can_log_in(self, admin_page, login, seed):
+        seed(
+            add(
+                User(
+                    full_name="Мама Петрова",
+                    phone="375297770020",
+                    role="parent",
+                    password_hash="x",
+                )
+            )
+        )
         admin_page.goto("/users")
         admin_page.get_by_role("button", name="+ Добавить пользователя").click()
         dialog = admin_page.locator("#create-user-dialog")
         dialog.locator("input[name=last_name]").fill("Петров")
         dialog.locator("input[name=first_name]").fill("Пётр")
         dialog.locator("input[name=phone]").fill("+375 (29) 700-00-09")
+        # Список родителей скрыт, пока не выбрана роль «Ученик».
+        expect(dialog.locator("select[name=parent_id]")).to_be_hidden()
         dialog.locator("select[name=role]").select_option(label="Ученик")
+        expect(dialog.locator("select[name=parent_id]")).to_be_visible()
+        dialog.locator("select[name=parent_id]").select_option(label="Мама Петрова (+375297770020)")
         dialog.locator("input[name=password]").fill("secret123")
         dialog.get_by_role("button", name="Создать пользователя").click()
         expect(admin_page.get_by_role("alert")).to_contain_text("Пользователь создан.")
@@ -452,7 +466,8 @@ class TestUsers:
         admin_page.locator("#role-filter").select_option(label="Ученик")
         admin_page.wait_for_url(re.compile(r"role_filter=student"))
         expect(admin_page.get_by_text("Ученик Один")).to_be_visible()
-        expect(admin_page.get_by_text("Родитель Один")).to_have_count(0)
+        # Имя родителя есть в выпадающем списке формы, поэтому смотрим только на карточки.
+        expect(admin_page.locator("article", has_text="Родитель Один")).to_have_count(0)
         expect(admin_page.locator("#role-filter")).to_have_value("student")
 
 

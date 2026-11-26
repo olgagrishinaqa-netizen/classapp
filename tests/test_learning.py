@@ -149,7 +149,9 @@ class TestPages:
         assert "Обыкновенные дроби" in page and "не пройдено" in page
 
     def test_unknown_subject_and_topic_redirect(self, student_client):
-        assert "Такого предмета нет" in text(student_client.get("/learn/art", follow_redirects=True))
+        assert "Такого предмета нет" in text(
+            student_client.get("/learn/art", follow_redirects=True)
+        )
         assert "Такой темы нет" in text(
             student_client.get("/learn/math/nope", follow_redirects=True)
         )
@@ -220,7 +222,9 @@ class TestCheckEndpoint:
         assert response.status_code == 400
 
     def test_unknown_topic_404(self, student_client):
-        assert student_client.post("/learn/math/nope/check", json={"answers": {}}).status_code == 404
+        assert (
+            student_client.post("/learn/math/nope/check", json={"answers": {}}).status_code == 404
+        )
 
     def test_csrf_enforced_when_enabled(self, student_client, app):
         app.config["WTF_CSRF_ENABLED"] = True
@@ -339,7 +343,9 @@ class TestParentLink:
         for child in (kid, stranger):
             c = app.test_client()
             login_as(c, child.phone, child.plain_password)
-            c.post("/learn/math/order-of-operations/check", json={"answers": correct_answers(topic)})
+            c.post(
+                "/learn/math/order-of-operations/check", json={"answers": correct_answers(topic)}
+            )
         mom_client = app.test_client()
         login_as(mom_client, mom.phone, mom.plain_password)
         page = text(mom_client.get("/children"))
