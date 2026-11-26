@@ -31,11 +31,21 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     bind = op.get_bind()
-    columns = {c["name"] for c in sa.inspect(bind).get_columns("user")}
+    inspector = sa.inspect(bind)
+    columns = {c["name"] for c in inspector.get_columns("user")}
     if "parent_id" not in columns:
         return
+    # Имя FK зависит от того, кто создал столбец (эта миграция или базовая схема), поэтому берём его из БД.
+    fk_names = [
+        fk["name"]
+        for fk in inspector.get_foreign_keys("user")
+        if fk.get("name") and fk["constrained_columns"] == ["parent_id"]
+    ]
+    index_names = [i["name"] for i in inspector.get_indexes("user") if i["column_names"] == ["parent_id"]]
     with op.batch_alter_table("user") as batch:
-        batch.drop_index("ix_user_parent_id")
+        for name in index_names:
+            batch.drop_index(name)
         if bind.dialect.name != "sqlite":  # SQLite пересоздаёт таблицу и теряет FK вместе со столбцом
-            batch.drop_constraint("fk_user_parent_id_user", type_="foreignkey")
+            for name in fk_names:
+                batch.drop_constraint(name, type_="foreignkey")
         batch.drop_column("parent_id")
