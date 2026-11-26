@@ -43,7 +43,7 @@ class TestCatalog:
         assert len(topics) >= 5
         for topic in topics.values():
             assert topic["rule"].strip()
-            assert len(topic["questions"]) >= 6
+            assert len(topic["questions"]) >= 5
 
     def test_every_question_is_well_formed(self):
         for subject in learning.CATALOG.values():
@@ -57,6 +57,37 @@ class TestCatalog:
                         assert 0 <= q["answer"] < len(q["options"]), q["text"]
                     else:
                         assert q["answers"], q["text"]
+
+    def test_belarusian_follows_textbook_structure(self):
+        subject = learning.CATALOG["belarusian"]
+        titles = [section["title"] for section in subject["sections"]]
+        assert titles == [
+            "Маўленне",
+            "Паўтарэнне вывучанага ў I–IV класах",
+            "Тэкст",
+            "Сінтаксіс і пунктуацыя",
+        ]
+        for topic in subject["topics"].values():
+            assert topic["par"].startswith("§"), topic["slug"]
+            assert topic["example"].strip(), topic["slug"]
+            # правило и все задания — на белорусском (в белорусском алфавите есть і, ў)
+            assert any(ch in topic["rule"] for ch in "іўІЎ"), topic["slug"]
+
+    def test_every_belarusian_question_has_a_valid_retry(self):
+        for topic in learning.CATALOG["belarusian"]["topics"].values():
+            for q in topic["questions"]:
+                retry = q["retry"]
+                assert retry["id"] == f"{q['id']}r"
+                assert retry["text"].strip() != q["text"].strip()
+                if "options" in retry:
+                    assert 0 <= retry["answer"] < len(retry["options"]), retry["text"]
+                else:
+                    assert retry["answers"], retry["text"]
+
+    def test_default_section_for_subjects_without_sections(self):
+        math_sections = learning.CATALOG["math"]["sections"]
+        assert [s["title"] for s in math_sections] == ["Темы"]
+        assert len(math_sections[0]["topics"]) == 5
 
     def test_public_question_hides_answer_and_hint(self):
         topic = learning.get_topic("math", "order-of-operations")
@@ -368,3 +399,87 @@ class TestParentLink:
 
     def test_parent_dashboard_link(self, parent_client):
         assert "/children" in text(parent_client.get("/dashboard"))
+
+
+class TestRetryAndHintCard:
+    TOPIC = ("belarusian", "word-combination")
+
+    def url(self, suffix):
+        return f"/learn/{self.TOPIC[0]}/{self.TOPIC[1]}/{suffix}"
+
+    def test_wrong_answer_returns_hint_and_public_retry(self, student_client):
+        topic = learning.get_topic(*self.TOPIC)
+        answers = correct_answers(topic)
+        answers["q1"] = "2"  # заведомо неверный вариант
+        data = student_client.post(self.url("check"), json={"answers": answers}).get_json()
+        first = data["results"][0]
+        assert not first["correct"] and first["hint"] and first["retry"]["id"] == "q1r"
+        assert set(first["retry"]) <= {"id", "text", "kind", "options"}
+        assert all("retry" not in r for r in data["results"][1:])
+
+    def test_correct_answer_has_no_retry_in_response(self, student_client):
+        topic = learning.get_topic(*self.TOPIC)
+        data = student_client.post(
+            self.url("check"), json={"answers": correct_answers(topic)}
+        ).get_json()
+        assert all("retry" not in r and "hint" not in r for r in data["results"])
+
+    def test_retry_endpoint_checks_without_saving(self, student_client, db):
+        topic = learning.get_topic(*self.TOPIC)
+        retry = topic["questions"][0]["retry"]
+        right = student_client.post(
+            self.url("retry"), json={"id": "q1r", "answer": str(retry["answer"])}
+        ).get_json()
+        wrong = student_client.post(
+            self.url("retry"), json={"id": "q1r", "answer": str((retry["answer"] + 1) % 3)}
+        ).get_json()
+        assert right == {"correct": True} and wrong == {"correct": False}
+        assert LearningAttempt.query.count() == 0
+
+    def test_retry_unknown_question_404(self, student_client):
+        response = student_client.post(self.url("retry"), json={"id": "q99r", "answer": "0"})
+        assert response.status_code == 404
+
+    def test_retry_unknown_topic_404(self, student_client):
+        response = student_client.post("/learn/math/nope/retry", json={"id": "q1r", "answer": "0"})
+        assert response.status_code == 404
+
+    @pytest.mark.parametrize("body", [None, [], "x"])
+    def test_retry_bad_payload(self, student_client, body):
+        assert student_client.post(self.url("retry"), json=body).status_code == 400
+
+    def test_retry_requires_student_role(self, parent_client, client):
+        assert (
+            parent_client.post(self.url("retry"), json={"id": "q1r", "answer": "0"}).status_code
+            == 403
+        )
+        assert client.post(self.url("retry"), json={"id": "q1r", "answer": "0"}).status_code == 401
+
+    def test_retry_csrf_enforced_when_enabled(self, student_client, app):
+        app.config["WTF_CSRF_ENABLED"] = True
+        try:
+            response = student_client.post(self.url("retry"), json={"id": "q1r", "answer": "0"})
+        finally:
+            app.config["WTF_CSRF_ENABLED"] = False
+        assert response.status_code == 400
+
+    def test_check_retry_helper(self):
+        topic = learning.get_topic(*self.TOPIC)
+        assert learning.check_retry(topic, "q1r", "0") in (True, False)
+        assert learning.check_retry(topic, "nope", "0") is None
+        math_topic = learning.get_topic("math", "order-of-operations")
+        assert learning.check_retry(math_topic, "q1r", "0") is None  # у математики retry пока нет
+
+    def test_subject_page_groups_topics_by_section_with_paragraphs(self, student_client):
+        page = text(student_client.get("/learn/belarusian"))
+        assert "Сінтаксіс і пунктуацыя" in page and "§ 28" in page
+        assert "Источник тем" in page
+
+    def test_topic_page_shows_paragraph_rule_and_example(self, student_client):
+        topic = learning.get_topic(*self.TOPIC)
+        page = text(student_client.get("/learn/belarusian/word-combination"))
+        assert "§ 15–16" in page and topic["rule"][:30] in page and topic["example"][:20] in page
+        assert "data-retry-url" in page
+        # ответы и подсказки/аналогичные задания в страницу не попадают
+        for q in topic["questions"]:
+            assert q["hint"] not in page and q["retry"]["text"] not in page

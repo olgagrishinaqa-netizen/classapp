@@ -1890,18 +1890,45 @@ def learn_topic_page(subject_slug, topic_slug):
     )
 
 
-@bp.post("/learn/<subject_slug>/<topic_slug>/check")
-@auth_required
-def learn_check(subject_slug, topic_slug):
-    """Проверяет ответы ученика, сохраняет попытку, возвращает результат и подсказки."""
+def _learning_api_guard():
+    """Общие проверки JSON-эндпоинтов раздела: роль и CSRF. Возвращает (user, ошибка)."""
     user = current_user()
     if user.role not in LEARNING_ROLES:
-        return jsonify(error="Раздел доступен только ученикам"), 403
+        return None, (jsonify(error="Раздел доступен только ученикам"), 403)
     if current_app.config.get("WTF_CSRF_ENABLED", True):
         try:
             validate_csrf(request.headers.get("X-CSRFToken", ""))
         except CSRFValidationError:
-            return jsonify(error="Сессия устарела, обновите страницу"), 400
+            return None, (jsonify(error="Сессия устарела, обновите страницу"), 400)
+    return user, None
+
+
+@bp.post("/learn/<subject_slug>/<topic_slug>/retry")
+@auth_required
+def learn_retry(subject_slug, topic_slug):
+    """Проверяет вторую попытку — аналогичное задание после ошибки. Ничего не сохраняет."""
+    _, error = _learning_api_guard()
+    if error:
+        return error
+    topic = learning.get_topic(subject_slug, topic_slug)
+    if not topic:
+        return jsonify(error="Тема не найдена"), 404
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify(error="Некорректный формат ответа"), 400
+    correct = learning.check_retry(topic, payload.get("id", ""), payload.get("answer"))
+    if correct is None:
+        return jsonify(error="Задание не найдено"), 404
+    return jsonify(correct=correct)
+
+
+@bp.post("/learn/<subject_slug>/<topic_slug>/check")
+@auth_required
+def learn_check(subject_slug, topic_slug):
+    """Проверяет ответы ученика, сохраняет попытку, возвращает результат и подсказки."""
+    user, error = _learning_api_guard()
+    if error:
+        return error
     topic = learning.get_topic(subject_slug, topic_slug)
     if not topic:
         return jsonify(error="Тема не найдена"), 404

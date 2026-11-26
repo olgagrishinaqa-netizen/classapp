@@ -4,11 +4,16 @@
 english.py). Здесь — загрузка каталога и проверка ответов. Правильные ответы и
 подсказки в браузер не отдаются: клиент видит их только после проверки на сервере,
 и подсказка показывается лишь для неверно решённых заданий.
+
+Структура каталога: предмет -> раздел (глава учебника) -> тема (параграф). У темы есть
+правило с примером; у задания — пояснение «почему так» (hint) и необязательное
+аналогичное задание `retry` для второй попытки после ошибки.
 """
 
 from . import belarusian, english, math, russian
 
 _MODULES = (russian, belarusian, math, english)
+DEFAULT_SECTION = "Темы"
 
 
 def _build_catalog():
@@ -16,15 +21,26 @@ def _build_catalog():
     for module in _MODULES:
         subject = dict(module.SUBJECT)
         topics = {}
+        sections = []
         for topic_data in module.TOPICS:
             topic = {k: v for k, v in topic_data.items() if k != "questions"}
             topic["subject"] = subject["slug"]
+            topic.setdefault("section", DEFAULT_SECTION)
+            topic.setdefault("par", "")
+            topic.setdefault("example", "")
             topic["questions"] = [
                 {**question, "id": f"q{number}"}
                 for number, question in enumerate(topic_data["questions"], start=1)
             ]
+            for question in topic["questions"]:
+                if "retry" in question:
+                    question["retry"] = {**question["retry"], "id": f"{question['id']}r"}
             topics[topic["slug"]] = topic
+            if not sections or sections[-1]["title"] != topic["section"]:
+                sections.append({"title": topic["section"], "topics": []})
+            sections[-1]["topics"].append(topic)
         subject["topics"] = topics
+        subject["sections"] = sections
         catalog[subject["slug"]] = subject
     return catalog
 
@@ -69,6 +85,16 @@ def _is_correct(question, answer):
     return normalized in {normalize_answer(a) for a in question["answers"]}
 
 
+def check_retry(topic, question_id, answer):
+    """Проверяет ответ на аналогичное задание (вторая попытка). Возвращает True/False,
+    либо None, если такого задания нет. Результат нигде не сохраняется."""
+    base_id = str(question_id).removesuffix("r")
+    for question in topic["questions"]:
+        if question["id"] == base_id and "retry" in question:
+            return _is_correct(question["retry"], answer)
+    return None
+
+
 def check_answers(topic, answers):
     """Проверяет ответы ученика. answers — словарь {id вопроса: ответ}.
 
@@ -85,5 +111,7 @@ def check_answers(topic, answers):
         result = {"id": question["id"], "correct": correct, "answered": answered}
         if answered and not correct:
             result["hint"] = question["hint"]
+            if "retry" in question:
+                result["retry"] = public_question(question["retry"])
         results.append(result)
     return score, results
