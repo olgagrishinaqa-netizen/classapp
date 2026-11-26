@@ -2,3 +2,5 @@
 max-line-length = 120
 extend-ignore = E203
 exclude = .git,__pycache__,.venv,alembic
+per-file-ignores =
+    app/learning/*.py:E501

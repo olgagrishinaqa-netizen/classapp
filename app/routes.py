@@ -19,10 +19,13 @@ from flask import (
     session,
     url_for,
 )
+from flask_wtf.csrf import ValidationError as CSRFValidationError
+from flask_wtf.csrf import generate_csrf, validate_csrf
 from sqlalchemy import case, or_
 from sqlalchemy.exc import IntegrityError
 from werkzeug.utils import secure_filename as _werkzeug_secure_filename
 
+from . import learning
 from .audit import REGISTRATIONS, audit, audit_login, describe_device, mask_phone
 from .extensions import db
 from .forms import (
@@ -46,6 +49,7 @@ from .models import (
     Expense,
     ExpenseReport,
     GeneralInfo,
+    LearningAttempt,
     LoginEvent,
     News,
     NewsImage,
@@ -885,6 +889,29 @@ def login_log_page():
     )
 
 
+def _user_form():
+    """Форма пользователя с актуальным списком родителей для выбора."""
+    form = UserManagementForm()
+    parents = User.query.filter_by(role="parent").order_by(User.full_name.asc()).all()
+    form.parent_id.choices = [("", "— выберите родителя —")] + [
+        (str(p.id), f"{p.full_name} (+{p.phone})") for p in parents
+    ]
+    return form
+
+
+def _resolve_parent(form):
+    """Возвращает (parent_id, ошибка). Родитель нужен только ученику и должен иметь роль parent."""
+    if form.role.data != "student":
+        return None, None
+    raw = (form.parent_id.data or "").strip()
+    if not raw:
+        return None, "Выберите родителя ученика."
+    parent = db.session.get(User, int(raw)) if raw.isdigit() else None
+    if not parent or parent.role != "parent":
+        return None, "Выберите родителя из списка."
+    return parent.id, None
+
+
 @bp.route("/users", methods=["GET", "POST"])
 def users_page():
     user, active_role = page_user()
@@ -894,7 +921,7 @@ def users_page():
         flash("Доступ к пользователям разрешен только администратору.", "error")
         return redirect(url_for("main.dashboard_page"))
 
-    form = UserManagementForm()
+    form = _user_form()
     if request.method == "POST":
         if request.form.get("action") != "create_user":
             flash("Неизвестное действие.", "error")
@@ -906,6 +933,8 @@ def users_page():
                 form.phone.errors.append("Введите номер в формате +375 (XX) XXX-XX-XX.")
             elif User.query.filter_by(phone=phone).first():
                 form.phone.errors.append("Этот номер телефона уже зарегистрирован.")
+            elif _resolve_parent(form)[1]:
+                form.parent_id.errors.append(_resolve_parent(form)[1])
             else:
                 full_name = " ".join(
                     part.strip()
@@ -916,7 +945,12 @@ def users_page():
                     )
                     if part.strip()
                 )
-                new_user = User(full_name=full_name, phone=phone, role=form.role.data)
+                new_user = User(
+                    full_name=full_name,
+                    phone=phone,
+                    role=form.role.data,
+                    parent_id=_resolve_parent(form)[0],
+                )
                 if form.password.data:
                     new_user.set_password(form.password.data)
                 else:
@@ -958,11 +992,12 @@ def edit_user_page(user_id):
     if not target_user:
         flash("Пользователь не найден.", "error")
         return redirect(url_for("main.users_page"))
-    form = UserManagementForm()
+    form = _user_form()
     if not form.validate_on_submit():
         flash("Проверьте заполнение обязательных полей.", "error")
         return redirect(url_for("main.users_page"))
 
+    parent_id, parent_error = _resolve_parent(form)
     phone = User.normalize_phone(form.phone.data)
     existing_user = User.query.filter_by(phone=phone).first()
     if not phone.startswith("375") or len(phone) != 12:
@@ -975,7 +1010,10 @@ def edit_user_page(user_id):
         and User.query.filter_by(role="admin").count() == 1
     ):
         flash("Нельзя изменить роль последнего администратора.", "error")
+    elif parent_error and not (target_user.role == "student" and target_user.parent_id is None):
+        flash(parent_error, "error")
     else:
+        target_user.parent_id = parent_id
         target_user.full_name = " ".join(
             part.strip()
             for part in (form.last_name.data, form.first_name.data, form.middle_name.data or "")
@@ -1037,6 +1075,8 @@ def update_user_role_page(user_id):
             flash("Нельзя изменить роль последнего администратора.", "error")
         else:
             target_user.role = next_role
+            if next_role != "student":
+                target_user.parent_id = None
             db.session.commit()
             flash("Роль пользователя обновлена.", "success")
     else:
@@ -1760,3 +1800,179 @@ def create_report():
 def uploaded_file(filename):
     upload_folder = current_app.config.get("UPLOAD_FOLDER", os.path.join(os.getcwd(), "uploads"))
     return send_from_directory(upload_folder, filename)
+
+
+# ---------------------------------------------------------------------------
+# Раздел ученика: тесты по предметам 5 класса с подсказками из правил
+# ---------------------------------------------------------------------------
+
+LEARNING_ROLES = {"student", "admin"}
+
+
+def learning_required(view):
+    """Раздел «Учёба» доступен ученику (и администратору для проверки содержимого)."""
+
+    @wraps(view)
+    @login_required_page
+    def wrapped(*args, **kwargs):
+        if current_user().role not in LEARNING_ROLES:
+            flash("Раздел «Учёба» доступен только ученикам.", "error")
+            return redirect(url_for("main.dashboard_page"))
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
+def _best_scores(user_id, subject_slug=None):
+    """{(предмет, тема): (лучший балл, всего)} по сохранённым попыткам ученика."""
+    query = db.session.query(
+        LearningAttempt.subject,
+        LearningAttempt.topic,
+        db.func.max(LearningAttempt.score),
+        db.func.max(LearningAttempt.total),
+    ).filter(LearningAttempt.user_id == user_id)
+    if subject_slug:
+        query = query.filter(LearningAttempt.subject == subject_slug)
+    rows = query.group_by(LearningAttempt.subject, LearningAttempt.topic).all()
+    return {(subject, topic): (best, total) for subject, topic, best, total in rows}
+
+
+@bp.get("/learn")
+@learning_required
+def learn_page():
+    best = _best_scores(current_user().id)
+    subjects = []
+    for subject in learning.CATALOG.values():
+        topics_total = len(subject["topics"])
+        done = sum(
+            1
+            for slug, topic in subject["topics"].items()
+            if best.get((subject["slug"], slug), (0, 0))[0] == len(topic["questions"])
+        )
+        subjects.append({**subject, "topics_total": topics_total, "topics_done": done})
+    return render_template(
+        "learn.html", subjects=subjects, current_user=current_user(), user=current_user()
+    )
+
+
+@bp.get("/learn/<subject_slug>")
+@learning_required
+def learn_subject_page(subject_slug):
+    subject = learning.get_subject(subject_slug)
+    if not subject:
+        flash("Такого предмета нет.", "error")
+        return redirect(url_for("main.learn_page"))
+    best = _best_scores(current_user().id, subject_slug)
+    return render_template(
+        "learn_subject.html",
+        subject=subject,
+        best=best,
+        current_user=current_user(),
+        user=current_user(),
+    )
+
+
+@bp.get("/learn/<subject_slug>/<topic_slug>")
+@learning_required
+def learn_topic_page(subject_slug, topic_slug):
+    topic = learning.get_topic(subject_slug, topic_slug)
+    if not topic:
+        flash("Такой темы нет.", "error")
+        return redirect(url_for("main.learn_page"))
+    return render_template(
+        "learn_topic.html",
+        subject=learning.get_subject(subject_slug),
+        topic=topic,
+        questions=[learning.public_question(q) for q in topic["questions"]],
+        csrf_token_value=generate_csrf(),
+        current_user=current_user(),
+        user=current_user(),
+    )
+
+
+@bp.post("/learn/<subject_slug>/<topic_slug>/check")
+@auth_required
+def learn_check(subject_slug, topic_slug):
+    """Проверяет ответы ученика, сохраняет попытку, возвращает результат и подсказки."""
+    user = current_user()
+    if user.role not in LEARNING_ROLES:
+        return jsonify(error="Раздел доступен только ученикам"), 403
+    if current_app.config.get("WTF_CSRF_ENABLED", True):
+        try:
+            validate_csrf(request.headers.get("X-CSRFToken", ""))
+        except CSRFValidationError:
+            return jsonify(error="Сессия устарела, обновите страницу"), 400
+    topic = learning.get_topic(subject_slug, topic_slug)
+    if not topic:
+        return jsonify(error="Тема не найдена"), 404
+    payload = request.get_json(silent=True)
+    answers = payload.get("answers") if isinstance(payload, dict) else None
+    if not isinstance(answers, dict):
+        return jsonify(error="Некорректный формат ответов"), 400
+
+    score, results = learning.check_answers(topic, answers)
+    total = len(topic["questions"])
+    db.session.add(
+        LearningAttempt(
+            user_id=user.id, subject=subject_slug, topic=topic_slug, score=score, total=total
+        )
+    )
+    db.session.commit()
+    return jsonify(score=score, total=total, results=results)
+
+
+@bp.get("/children")
+@login_required_page
+def children_results_page():
+    """Результаты тестов детей для родителя (администратору — всех учеников)."""
+    user = current_user()
+    if user.role not in {"parent", "admin"}:
+        flash("Раздел «Результаты детей» доступен родителям.", "error")
+        return redirect(url_for("main.dashboard_page"))
+
+    if user.role == "admin":
+        children = User.query.filter_by(role="student").order_by(User.full_name.asc()).all()
+    else:
+        children = (
+            User.query.filter_by(parent_id=user.id, role="student")
+            .order_by(User.full_name.asc())
+            .all()
+        )
+
+    attempts = {}
+    if children:
+        rows = (
+            db.session.query(
+                LearningAttempt.user_id,
+                LearningAttempt.subject,
+                LearningAttempt.topic,
+                db.func.max(LearningAttempt.score),
+                db.func.max(LearningAttempt.total),
+                db.func.count(LearningAttempt.id),
+                db.func.max(LearningAttempt.created_at),
+            )
+            .filter(LearningAttempt.user_id.in_([c.id for c in children]))
+            .group_by(LearningAttempt.user_id, LearningAttempt.subject, LearningAttempt.topic)
+            .all()
+        )
+        for child_id, subject, topic, best, total, count, last in rows:
+            attempts[(child_id, subject, topic)] = (best, total, count, last)
+
+    report = []
+    for child in children:
+        subjects = []
+        for subject in learning.CATALOG.values():
+            topics = []
+            for slug, topic in subject["topics"].items():
+                best, total, count, last = attempts.get(
+                    (child.id, subject["slug"], slug), (None, len(topic["questions"]), 0, None)
+                )
+                topics.append(
+                    {"title": topic["title"], "best": best, "total": total, "count": count, "last": last}
+                )
+            subjects.append({"title": subject["title"], "topics": topics})
+        report.append({"child": child, "subjects": subjects})
+
+    return render_template(
+        "children.html", report=report, current_user=user, user=user, active_role=user.role
+    )

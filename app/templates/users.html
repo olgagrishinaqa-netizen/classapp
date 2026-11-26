@@ -27,7 +27,7 @@
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
             <h2 class="text-lg font-bold text-slate-900 dark:text-white">{{ member.full_name }}</h2>
-            <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">{{ member.phone }}</p>
+            <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">{{ member.phone }}</p>{% if member.role == 'student' and member.parent %}<p class="mt-1 text-xs text-slate-400 dark:text-slate-500">Родитель: {{ member.parent.full_name }}</p>{% endif %}
           </div>
           <span class="badge-{{ 'hard' if member.role == 'admin' else 'medium' if member.role == 'parent' else 'easy' }} shrink-0">{{ {'admin': 'Админ', 'parent': 'Родитель', 'student': 'Ученик'}[member.role] }}</span>
         </div>
@@ -51,6 +51,7 @@
             <div><label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">Отчество</label><input name="middle_name" value="{{ name_parts[2:]|join(' ') }}" class="input-cyber"></div>
             <div><label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">Телефон</label><input name="phone" value="+{{ member.phone }}" required inputmode="tel" placeholder="+375 (XX) XXX-XX-XX" class="input-cyber"></div>
             <div><label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">Роль</label><select name="role" class="input-cyber">{% for value, label in form.role.choices %}<option value="{{ value }}" {% if member.role == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+            <div class="parent-field {% if member.role != 'student' %}hidden{% endif %}"><label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">Родитель ученика</label><select name="parent_id" class="input-cyber">{% for value, label in form.parent_id.choices %}<option value="{{ value }}" {% if member.parent_id and value == member.parent_id|string %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
             <div><label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">Новый пароль <span class="font-normal text-slate-400 dark:text-slate-500">необязательно</span></label><input name="password" type="password" minlength="6" autocomplete="new-password" class="input-cyber"></div>
           </div>
           <button class="btn-cyber mt-5 w-full">Сохранить изменения</button>
@@ -70,10 +71,24 @@
         {% for field in [form.last_name, form.first_name, form.middle_name, form.phone, form.role, form.password] %}
           <div>{{ field.label(class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300") }}{{ field(class="input-cyber", placeholder="+375 (XX) XXX-XX-XX" if field.name == "phone" else none, inputmode="tel" if field.name == "phone" else none, autocomplete="new-password" if field.name == "password" else none) }}{% for error in field.errors %}<p class="mt-2 text-sm font-medium text-rose-600 dark:text-rose-400">{{ error }}</p>{% endfor %}</div>
         {% endfor %}
+        <div class="parent-field {% if form.role.data != 'student' %}hidden{% endif %}">
+          {{ form.parent_id.label(class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300") }}{{ form.parent_id(class="input-cyber") }}{% for error in form.parent_id.errors %}<p class="mt-2 text-sm font-medium text-rose-600 dark:text-rose-400">{{ error }}</p>{% endfor %}
+        </div>
       </div>
       <button class="btn-cyber mt-5 w-full">Создать пользователя</button>
     </form>
   </dialog>
+  <script>
+    // Список родителей показываем только когда выбрана роль «Ученик».
+    document.querySelectorAll('select[name="role"]').forEach(function (select) {
+      var scope = select.closest('form');
+      function toggle() {
+        var field = scope.querySelector('.parent-field');
+        if (field) field.classList.toggle('hidden', select.value !== 'student');
+      }
+      select.addEventListener('change', toggle);
+    });
+  </script>
   <script>
     // После неудачной отправки заново открываем окно, чтобы были видны ошибки.
     {% if request.method == "POST" and request.form.get("action") == "create_user" %}document.getElementById('create-user-dialog').showModal();{% endif %}

@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}{{ topic.title }} | {{ subject.title }}{% endblock %}
+{% block content %}
+<header class="mb-5">
+  <a href="{{ url_for('main.learn_subject_page', subject_slug=subject.slug) }}" class="text-sm font-bold text-cyan-700 dark:text-cyan-300">← {{ subject.title }}</a>
+  <h1 class="mt-2 font-display text-xl font-bold tracking-tight text-slate-900 dark:text-white">{{ topic.title }}</h1>
+</header>
+
+<details class="glass-card mb-5 p-4">
+  <summary class="cursor-pointer font-bold text-slate-900 dark:text-white">Правило</summary>
+  <p class="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">{{ topic.rule }}</p>
+</details>
+
+<form id="quiz-form" class="space-y-4" data-check-url="{{ url_for('main.learn_check', subject_slug=subject.slug, topic_slug=topic.slug) }}" data-csrf="{{ csrf_token_value }}" novalidate>
+  {% for question in questions %}
+  <fieldset class="quiz-question glass-card p-4" data-question="{{ question.id }}">
+    <legend class="sr-only">Задание {{ loop.index }}</legend>
+    <p class="font-bold text-slate-900 dark:text-white"><span class="text-cyan-700 dark:text-cyan-300">{{ loop.index }}.</span> {{ question.text }}</p>
+    {% if question.kind == 'choice' %}
+      <div class="mt-3 grid gap-2">
+        {% for option in question.options %}
+        <label class="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-slate-200 px-4 text-sm text-slate-800 dark:border-white/10 dark:text-slate-100">
+          <input type="radio" name="{{ question.id }}" value="{{ loop.index0 }}" class="h-4 w-4">
+          <span>{{ option }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    {% else %}
+      <input type="text" name="{{ question.id }}" autocomplete="off" autocapitalize="off" class="input-cyber mt-3" placeholder="Твой ответ" aria-label="Ответ на задание {{ loop.index }}">
+    {% endif %}
+    <p class="quiz-feedback mt-3 hidden rounded-xl px-4 py-3 text-sm" role="status"></p>
+  </fieldset>
+  {% endfor %}
+
+  <button type="submit" id="quiz-submit" class="btn-cyber w-full">Проверить</button>
+  <p id="quiz-summary" class="hidden glass-card p-4 text-center font-bold text-slate-900 dark:text-white" role="status"></p>
+</form>
+
+<script>
+  (function () {
+    var form = document.getElementById('quiz-form');
+    var summary = document.getElementById('quiz-summary');
+    var button = document.getElementById('quiz-submit');
+    var GOOD = 'rounded-xl px-4 py-3 text-sm bg-emerald-50 text-emerald-800 dark:bg-emerald-400/10 dark:text-emerald-300';
+    var BAD = 'rounded-xl px-4 py-3 text-sm bg-rose-50 text-rose-800 dark:bg-rose-500/10 dark:text-rose-300';
+    var NONE = 'rounded-xl px-4 py-3 text-sm bg-amber-50 text-amber-800 dark:bg-amber-400/10 dark:text-amber-300';
+
+    function collect() {
+      var answers = {};
+      form.querySelectorAll('.quiz-question').forEach(function (box) {
+        var id = box.dataset.question;
+        var radio = box.querySelector('input[type=radio]:checked');
+        var text = box.querySelector('input[type=text]');
+        if (radio) answers[id] = radio.value;
+        else if (text) answers[id] = text.value;
+      });
+      return answers;
+    }
+
+    function show(box, cls, message) {
+      var feedback = box.querySelector('.quiz-feedback');
+      feedback.className = 'quiz-feedback mt-3 ' + cls;
+      feedback.textContent = message;
+    }
+
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      button.disabled = true;
+      fetch(form.dataset.checkUrl, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': form.dataset.csrf},
+        credentials: 'same-origin',
+        body: JSON.stringify({answers: collect()})
+      }).then(function (response) {
+        return response.json().then(function (data) { return {ok: response.ok, data: data}; });
+      }).then(function (res) {
+        if (!res.ok) throw new Error(res.data.error || 'Не удалось проверить ответы');
+        res.data.results.forEach(function (item) {
+          var box = form.querySelector('[data-question="' + item.id + '"]');
+          if (!box) return;
+          if (item.correct) show(box, GOOD, 'Верно!');
+          else if (!item.answered) show(box, NONE, 'Выбери или впиши ответ.');
+          else show(box, BAD, 'Подсказка: ' + item.hint);
+        });
+        summary.classList.remove('hidden');
+        summary.textContent = res.data.score === res.data.total
+          ? 'Отлично! Все ' + res.data.total + ' заданий выполнены верно.'
+          : 'Результат: ' + res.data.score + ' из ' + res.data.total + '. Прочитай подсказки и попробуй ещё раз.';
+      }).catch(function (error) {
+        summary.classList.remove('hidden');
+        summary.textContent = error.message;
+      }).finally(function () {
+        button.disabled = false;
+      });
+    });
+  })();
+</script>
+{% endblock %}

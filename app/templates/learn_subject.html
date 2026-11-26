@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}{{ subject.title }} | Учёба{% endblock %}
+{% block content %}
+<header class="mb-6">
+  <a href="{{ url_for('main.learn_page') }}" class="text-sm font-bold text-cyan-700 dark:text-cyan-300">← Предметы</a>
+  <h1 class="mt-2 font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{{ subject.title }}</h1>
+</header>
+
+<div class="grid gap-3">
+  {% for slug, topic in subject.topics.items() %}
+  {% set result = best.get((subject.slug, slug)) %}
+  {% set total = topic.questions|length %}
+  <a href="{{ url_for('main.learn_topic_page', subject_slug=subject.slug, topic_slug=slug) }}" class="glass-card flex items-center gap-3 p-4 transition active:scale-[0.98]">
+    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cyan-100 text-sm font-black text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300">{{ loop.index }}</span>
+    <span class="min-w-0 flex-1">
+      <span class="block font-bold text-slate-900 dark:text-white">{{ topic.title }}</span>
+      <span class="block text-xs text-slate-500 dark:text-slate-400">{{ total }} заданий</span>
+    </span>
+    {% if result %}
+      <span class="{% if result[0] == total %}badge-easy{% else %}badge-medium{% endif %}">{{ result[0] }}/{{ total }}</span>
+    {% else %}
+      <span class="text-xs text-slate-400">не пройдено</span>
+    {% endif %}
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}

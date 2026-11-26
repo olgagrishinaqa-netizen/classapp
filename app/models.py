@@ -42,6 +42,13 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=local_now, nullable=False)
     last_login = db.Column(db.DateTime, nullable=True)
+    # Для ученика — родитель, который видит его результаты тестов.
+    parent_id = db.Column(
+        db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    children = db.relationship(
+        "User", backref=db.backref("parent", remote_side="User.id"), foreign_keys=[parent_id]
+    )
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -273,3 +280,19 @@ class Student(db.Model):
     @property
     def full_name(self):
         return f"{self.last_name} {self.first_name}"
+
+
+class LearningAttempt(db.Model):
+    """Попытка ученика пройти тест по теме. Предмет и тема — slug из app/learning."""
+
+    __tablename__ = "learning_attempt"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True)
+    subject = db.Column(db.String(32), nullable=False)
+    topic = db.Column(db.String(64), nullable=False)
+    score = db.Column(db.Integer, nullable=False)
+    total = db.Column(db.Integer, nullable=False)
+    created_at = db.Column(db.DateTime, default=local_now, nullable=False)
+
+    __table_args__ = (db.Index("ix_learning_attempt_user_topic", "user_id", "subject", "topic"),)

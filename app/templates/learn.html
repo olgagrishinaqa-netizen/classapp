@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Учёба | Класс{% endblock %}
+{% block content %}
+<header class="mb-6">
+  <p class="eyebrow-neon">Ученик</p>
+  <h1 class="mt-1 font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Учёба, 5 класс</h1>
+  <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">Выбери предмет, прочитай правило и пройди тест. Если ошибёшься, подсказка напомнит правило.</p>
+</header>
+
+<div class="grid gap-3">
+  {% for subject in subjects %}
+  <a href="{{ url_for('main.learn_subject_page', subject_slug=subject.slug) }}" class="glass-card flex items-center gap-4 p-4 transition active:scale-[0.98]">
+    <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-cyan-100 text-sm font-black text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300">{{ subject.icon }}</span>
+    <span class="min-w-0 flex-1">
+      <span class="block font-bold text-slate-900 dark:text-white">{{ subject.title }}</span>
+      <span class="block text-sm text-slate-500 dark:text-slate-400">{{ subject.description }}</span>
+      <span class="mt-1 block text-xs font-bold text-emerald-700 dark:text-emerald-300">Пройдено тем: {{ subject.topics_done }} из {{ subject.topics_total }}</span>
+    </span>
+    <span aria-hidden="true">→</span>
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}

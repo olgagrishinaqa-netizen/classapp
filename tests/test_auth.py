@@ -181,6 +181,10 @@ def test_dashboard_news_users_and_profile_role_mode(client, db):
 
 def test_user_management_creates_sorts_filters_edits_and_deletes_users(client, db):
     client.post("/login", data={"username": "375290000000", "password": "admin123"})
+    guardian = User(full_name="Опекунов Олег", phone="375299990001", role="parent")
+    guardian.set_password("secret123")
+    db.session.add(guardian)
+    db.session.commit()
 
     create_student = client.post(
         "/users",
@@ -191,6 +195,7 @@ def test_user_management_creates_sorts_filters_edits_and_deletes_users(client, d
             "middle_name": "",
             "phone": "+375 (29) 123-45-67",
             "role": "student",
+            "parent_id": str(guardian.id),
             "password": "secure-pass",
         },
         follow_redirects=False,

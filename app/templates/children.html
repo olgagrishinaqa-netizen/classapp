@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Результаты детей | Класс{% endblock %}
+{% block content %}
+<header class="mb-6">
+  <p class="eyebrow-neon">Учёба</p>
+  <h1 class="mt-1 font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Результаты тестов</h1>
+</header>
+
+{% for item in report %}
+<section class="glass-card mb-4 p-4">
+  <h2 class="font-bold text-slate-900 dark:text-white">{{ item.child.full_name }}</h2>
+  {% for subject in item.subjects %}
+  <details class="mt-3">
+    <summary class="cursor-pointer text-sm font-bold text-cyan-700 dark:text-cyan-300">{{ subject.title }}</summary>
+    <ul class="mt-2 space-y-2">
+      {% for topic in subject.topics %}
+      <li class="flex items-center justify-between gap-3 text-sm">
+        <span class="min-w-0 text-slate-700 dark:text-slate-200">{{ topic.title }}
+          {% if topic.count %}<span class="block text-xs text-slate-400">попыток: {{ topic.count }}, последняя {{ topic.last.strftime('%d.%m.%Y') }}</span>{% endif %}
+        </span>
+        {% if topic.count %}
+          <span class="{% if topic.best == topic.total %}badge-easy{% else %}badge-medium{% endif %} shrink-0">{{ topic.best }}/{{ topic.total }}</span>
+        {% else %}
+          <span class="shrink-0 text-xs text-slate-400">не проходил(а)</span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endfor %}
+</section>
+{% else %}
+<p class="glass-card p-6 text-center text-slate-500 dark:text-slate-400">К вашему аккаунту пока не привязан ни один ученик. Обратитесь к администратору.</p>
+{% endfor %}
+{% endblock %}

@@ -64,8 +64,10 @@ class TestUsersListAccess:
         make_user(role="student", full_name="Фильтр Ученик")
         parents = text(admin_client.get("/users?role_filter=parent"))
         students = text(admin_client.get("/users?role_filter=student"))
-        assert "Фильтр Родитель" in parents and "Фильтр Ученик" not in parents
-        assert "Фильтр Ученик" in students and "Фильтр Родитель" not in students
+        # Имена родителей есть и в выпадающем списке формы, поэтому ищем карточку пользователя.
+        parent_card, student_card = ">Фильтр Родитель</h2>", ">Фильтр Ученик</h2>"
+        assert parent_card in parents and student_card not in parents
+        assert student_card in students and parent_card not in students
 
     def test_unknown_role_filter_shows_everyone(self, admin_client, make_user):
         make_user(role="parent", full_name="Без Фильтра")
@@ -85,9 +87,13 @@ class TestCreateUser:
         assert login_as(fresh, "375297000001", "secret123").status_code == 302
         User.query.filter_by(phone="375297000001").delete()
 
-    def test_blank_middle_name_is_skipped(self, admin_client, db):
+    def test_blank_middle_name_is_skipped(self, admin_client, db, make_user):
+        parent = make_user(role="parent")
         admin_client.post(
-            "/users", data=user_form(phone="375297000002", middle_name="  ", role="student")
+            "/users",
+            data=user_form(
+                phone="375297000002", middle_name="  ", role="student", parent_id=str(parent.id)
+            ),
         )
         user = User.query.filter_by(phone="375297000002").one()
         assert user.full_name == "Петров Пётр"
@@ -179,7 +185,8 @@ class TestEditUser:
     def test_admin_updates_a_user(self, admin_client, make_user, db):
         target = make_user(role="parent")
         old_hash = target.password_hash
-        response = self._edit(admin_client, target.id, role="student")
+        parent = make_user(role="parent")
+        response = self._edit(admin_client, target.id, role="student", parent_id=str(parent.id))
         assert "Данные пользователя обновлены." in text(response)
         db.session.refresh(target)
         assert target.full_name == "Новая Фамилия"
